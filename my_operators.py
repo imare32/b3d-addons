@@ -81,82 +81,104 @@ class DuplicateOrFullscreenWindow(bpy.types.Operator):
         is_outliner = area_type == "OUTLINER"
 
         if area_count == 1:
-            if area_type not in ["PROPERTIES", "OUTLINER"] and context.window.height < 1080:
+            if area_type not in ["PROPERTIES", "OUTLINER", "PREFERENCES"] and context.window.height < 1080:
                 bpy.ops.wm.window_fullscreen_toggle()
             else:
                 bpy.ops.wm.window_close()
         else:
-            import sys
+            from .platform_window import window_helper
+            import os
 
-            if (is_properties or is_outliner) and sys.platform == "win32":
-                import ctypes
-                import os
-
+            if is_properties or is_outliner:
                 pid = os.getpid()
-                initial_foreground = ctypes.windll.user32.GetForegroundWindow()
+                initial_foreground = window_helper.get_foreground_window()
 
-                class WindowResizer:
-                    def __init__(self, mode):
+                if initial_foreground is not None:
+                    class WindowResizer:
+                        def __init__(self, mode):
+                            self.attempts = 0
+                            self.mode = mode
+
+                        def __call__(self):
+                            self.attempts += 1
+                            if self.attempts > 40:  # 2 seconds timeout
+                                return None
+
+                            hwnd = window_helper.get_foreground_window()
+                            if not hwnd or hwnd == initial_foreground:
+                                return 0.05
+
+                            window_pid = window_helper.get_window_pid(hwnd)
+                            if window_pid != pid:
+                                return 0.05
+
+                            rect_info = window_helper.get_window_rect(hwnd)
+                            if rect_info:
+                                left, top, right, bottom, width, height = rect_info
+                                if self.mode == "PROPERTIES":
+                                    delta_width = 312  # Expand 312 pixels to the left
+                                    new_left = left - delta_width
+                                    new_width = width + delta_width
+                                    window_helper.move_resize_window(
+                                        hwnd,
+                                        new_left,
+                                        top,
+                                        new_width,
+                                        height,
+                                    )
+                                elif self.mode == "OUTLINER":
+                                    delta_height = 400  # Expand 400 pixels downward
+                                    delta_width = 200  # Expand 200 pixels leftward
+                                    new_left = left - delta_width
+                                    new_width = width + delta_width
+                                    new_height = height + delta_height
+                                    window_helper.move_resize_window(
+                                        hwnd,
+                                        new_left,
+                                        top,
+                                        new_width,
+                                        new_height,
+                                    )
+                                return None
+                            return 0.05
+
+                    mode = "PROPERTIES" if is_properties else "OUTLINER"
+                    bpy.app.timers.register(WindowResizer(mode), first_interval=0.05)
+            else:
+                initial_windows = set(context.window_manager.windows)
+
+                class WindowMaximizer:
+                    def __init__(self, init_wins):
                         self.attempts = 0
-                        self.mode = mode
+                        self.initial_windows = init_wins
 
                     def __call__(self):
                         self.attempts += 1
                         if self.attempts > 40:  # 2 seconds timeout
                             return None
 
-                        hwnd = ctypes.windll.user32.GetForegroundWindow()
-                        if not hwnd or hwnd == initial_foreground:
-                            return 0.05
-
-                        window_pid = ctypes.c_ulong()
-                        ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(window_pid))
-                        if window_pid.value != pid:
-                            return 0.05
-
-                        class RECT(ctypes.Structure):
-                            _fields_ = [
-                                ("left", ctypes.c_long),
-                                ("top", ctypes.c_long),
-                                ("right", ctypes.c_long),
-                                ("bottom", ctypes.c_long),
-                            ]
-
-                        rect = RECT()
-                        if ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect)):
-                            width = rect.right - rect.left
-                            height = rect.bottom - rect.top
-                            if self.mode == "PROPERTIES":
-                                delta_width = 312  # Expand 300 pixels to the left
-                                new_left = rect.left - delta_width
-                                new_width = width + delta_width
-                                ctypes.windll.user32.MoveWindow(
-                                    hwnd,
-                                    new_left,
-                                    rect.top,
-                                    new_width,
-                                    height,
-                                    True,
-                                )
-                            elif self.mode == "OUTLINER":
-                                delta_height = 400  # Expand 400 pixels downward
-                                delta_width = 200  # Expand 200 pixels leftward
-                                new_left = rect.left - delta_width
-                                new_width = width + delta_width
-                                new_height = height + delta_height
-                                ctypes.windll.user32.MoveWindow(
-                                    hwnd,
-                                    new_left,
-                                    rect.top,
-                                    new_width,
-                                    new_height,
-                                    True,
-                                )
+                        current_windows = set(context.window_manager.windows)
+                        new_windows = current_windows - self.initial_windows
+                        if new_windows:
+                            new_win = list(new_windows)[0]
+                            override = {
+                                "window": new_win,
+                                "screen": new_win.screen,
+                                "area": new_win.screen.areas[0] if (new_win.screen and new_win.screen.areas) else None,
+                                "workspace": context.workspace,
+                            }
+                            try:
+                                if hasattr(context, "temp_override"):
+                                    with context.temp_override(**override):
+                                        bpy.ops.wm.window_fullscreen_toggle()
+                                else:
+                                    bpy.ops.wm.window_fullscreen_toggle(override)
+                            except Exception as e:
+                                print(f"[b3d] Maximize window error: {e}")
                             return None
                         return 0.05
 
-                mode = "PROPERTIES" if is_properties else "OUTLINER"
-                bpy.app.timers.register(WindowResizer(mode), first_interval=0.05)
+                bpy.app.timers.register(WindowMaximizer(initial_windows), first_interval=0.05)
 
             bpy.ops.screen.area_dupli("INVOKE_DEFAULT")
 
@@ -211,6 +233,7 @@ def register():
             ("Console", "CONSOLE"),
             ("Property Editor", "PROPERTIES"),
             ("Outliner", "OUTLINER"),
+            ("Preferences", "PREFERENCES"),
         ]:
             km = kc.keymaps.new(name=name, space_type=space_type)
             kmi = km.keymap_items.new(

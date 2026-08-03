@@ -9,14 +9,11 @@ class B3D_OT_open_asset_window_from_spreadsheet(bpy.types.Operator):
     bl_options = {"REGISTER"}
 
     def execute(self, context):
-        initial_foreground = None
-        pid = None
-        
-        if sys.platform == "win32":
-            import ctypes
-            import os
-            initial_foreground = ctypes.windll.user32.GetForegroundWindow()
-            pid = os.getpid()
+        from .platform_window import window_helper
+        import os
+
+        initial_foreground = window_helper.get_foreground_window()
+        pid = os.getpid()
 
         # Capture current windows list
         current_windows = set(context.window_manager.windows)
@@ -34,8 +31,8 @@ class B3D_OT_open_asset_window_from_spreadsheet(bpy.types.Operator):
                 area.type = 'FILE_BROWSER'
                 area.ui_type = 'ASSETS'
                 
-        # Register setup timer to handle window resizing/centering on Windows
-        if sys.platform == "win32" and new_win is not None:
+        # Register setup timer to handle window resizing/centering
+        if new_win is not None and initial_foreground is not None:
             class AssetWindowSetup:
                 def __init__(self, init_fg, process_pid, target_width, target_height, win):
                     self.attempts = 0
@@ -44,28 +41,6 @@ class B3D_OT_open_asset_window_from_spreadsheet(bpy.types.Operator):
                     self.width = target_width
                     self.height = target_height
                     self.new_win = win
-
-                    import ctypes
-                    # Pre-allocate ctypes objects to prevent PyType_GenericNew/GC crashes inside the Blender timer thread
-                    self.window_pid = ctypes.c_ulong(0)
-                    self.byref_pid = ctypes.byref(self.window_pid)
-                    
-                    # Define Win32 function signatures to avoid dynamic ctypes wrapper creation in the timer thread
-                    self.GetWindowThreadProcessId = ctypes.windll.user32.GetWindowThreadProcessId
-                    self.GetWindowThreadProcessId.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
-                    self.GetWindowThreadProcessId.restype = ctypes.c_uint32
-                    
-                    self.GetForegroundWindow = ctypes.windll.user32.GetForegroundWindow
-                    self.GetForegroundWindow.argtypes = []
-                    self.GetForegroundWindow.restype = ctypes.c_void_p
-                    
-                    self.GetSystemMetrics = ctypes.windll.user32.GetSystemMetrics
-                    self.GetSystemMetrics.argtypes = [ctypes.c_int]
-                    self.GetSystemMetrics.restype = ctypes.c_int
-                    
-                    self.MoveWindow = ctypes.windll.user32.MoveWindow
-                    self.MoveWindow.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_bool]
-                    self.MoveWindow.restype = ctypes.c_bool
 
                 def __call__(self):
                     self.attempts += 1
@@ -77,21 +52,19 @@ class B3D_OT_open_asset_window_from_spreadsheet(bpy.types.Operator):
                         if not self.new_win or self.new_win not in bpy.context.window_manager.windows.values():
                             return None
 
-                        # Resize and center window on Windows
-                        hwnd = self.GetForegroundWindow()
+                        # Resize and center window
+                        hwnd = window_helper.get_foreground_window()
                         if hwnd and hwnd != self.init_fg:
-                            self.window_pid.value = 0
-                            self.GetWindowThreadProcessId(hwnd, self.byref_pid)
-                            if self.window_pid.value == self.pid:
+                            window_pid = window_helper.get_window_pid(hwnd)
+                            if window_pid == self.pid:
                                 # Center the window on the screen
-                                screen_width = self.GetSystemMetrics(0)
-                                screen_height = self.GetSystemMetrics(1)
+                                screen_width, screen_height = window_helper.get_screen_size()
                                 
                                 x = (screen_width - self.width) // 2
                                 y = (screen_height - self.height) // 2
                                 
                                 # Move and resize the window
-                                self.MoveWindow(hwnd, x, y, self.width, self.height, True)
+                                window_helper.move_resize_window(hwnd, x, y, self.width, self.height)
                                 return None  # Success, stop timer
 
                     except (ReferenceError, Exception):
