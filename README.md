@@ -1,96 +1,89 @@
-# B3D - Blender 个人工作流与高效开发插件
+# b3d — Personal Blender Addon
 
-![Blender Version](https://img.shields.io/badge/Blender-4.2%2B-orange.svg)
-![License](https://img.shields.io/badge/License-GPL--3.0-blue.svg)
-![Maintainer](https://img.shields.io/badge/Maintainer-imare32-brightgreen.svg)
+个人 Blender 插件，集合了多个提升工作效率的小工具。支持 Blender 4.2+，通过 `auto_load` 模块自动注册所有功能。
 
-**B3D** 是一款专为 Blender 4.2+ 打造的高效工作流增强与开发者辅助扩展插件。它集成了窗口无缝全屏/独立弹窗管理、节点自动布局与调试、快捷编辑器切换、渐变色带预设管理、内置图标检索等实用功能，旨在提升日常创作与脚本开发效率。
+## 功能概览
 
----
+### 节点编辑器增强 (`my_arrange_nodes.py`)
 
-## 🌟 核心功能一览
+- **一键排列节点** (`Alt+Shift+F`)：自动排列当前节点树中的所有节点，保留原有选择状态
+- **节点树优化** (`Alt+Shift+Q`)：一键清理和优化节点树，包括：
+  - 移除 Reroute 节点（保留连接关系）
+  - 替换已废弃节点为新版节点
+  - 分发 Group Input 节点（减少长距离连线）
+  - 分发独立输入节点（Index、Position 等）
+  - 按规则隐藏未连接的输入/输出接口
+  - 重置节点宽度
+  - 可选移除 Frame 节点和孤立节点
 
-- **窗口与独立界面管理**：一键将 3D 视图、节点编辑器等区域复制并**自动最大化/全屏弹窗**，或快速关闭独立窗口。支持无边框模式下的快捷窗口控制。
-- **节点树增强与排版**：一键排列节点树（基于配置规则），支持直接查看并复制节点的 `bl_idname` 与 Socket 标识。
-- **快捷编辑器切换**：提供分组式的编辑器快速切换面板与快捷键，覆盖 Geometry Nodes、Shader Nodes、Asset Browser、Spreadsheet 等高频编辑器。
-- **资产浏览器独立窗口**：可将任意面板一键复制并调整为居中摆放的资产浏览器独立窗口。
-- **渐变色带 (ColorRamp) 增强**：支持色彩渐变预设的复制、粘贴、翻转与管理。
-- **Blender 图标浏览器**：实时预览 Blender 所有内置 UI 图标与映射符号，搜索并快速复制图标名称。
-- **命名属性 (Named Attributes) 节点快投**：在 Geometry Nodes 中快速创建带类型与域 (Domain) 映射的 Named Attribute 节点。
+### 颜色渐变工具 (`my_color_ramp.py`)
 
----
+在 Color Ramp 的右键菜单中添加：
+- **复制/粘贴 Color Ramp**：在多个 Color Ramp 之间快速复制色标、插值模式等全部配置
+- **预设生成器**：内置 15 种常用配色预设（热力图、海洋、岩浆、Viridis、地形、落日等），一键应用
 
-## ⌨️ 常用快捷键 (Keymaps)
+### 编辑器切换 (`my_editor_switch.py`)
 
-| 快捷键 | 作用区域 | 功能描述 |
-| :--- | :--- | :--- |
-| <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>D</kbd> | 3D 视图 / 节点编辑器 / 控制台 | **复制区域并自动最大化/全屏**：在主窗口触发时弹出新窗口并自动全屏；在独立窗口中按下则直接**关闭窗口** |
-| <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>D</kbd> | 偏好设置 (Preferences) / 属性 / 大纲 | 一键**关闭独立窗口** |
-| <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>E</kbd> | 3D 视图 (VIEW_3D) | 快速切换场景结束帧（在 `3000` 与 `250` 帧之间交替） |
-| <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>W</kbd> | 3D 视图 (VIEW_3D) | 快速开启/关闭当前选中网格物体的**线框显示 (Wireframe)** |
+在几乎所有编辑器标题栏添加 **Tab 切换按钮组**，按功能分组：
+- **组 1**：几何节点、着色器(对象/世界)、图像编辑器、Dope Sheet、时间线、文本编辑器
+- **组 2**：属性编辑器、Python 控制台
+- **组 3**：电子表格、资产浏览器、文件浏览器
 
----
+快捷键 `Alt+`` 在当前分组内循环切换编辑器类型。
 
-## 🛠️ 模块功能详解
+### 图标查看器 (`my_icon_viewer.py`)
 
-### 1. 窗口独立与操作系统支持 (`platform_window.py` & `my_operators.py`)
-- 利用 Win32 与 Linux X11 原生 API 接口，智能识别外部窗口句柄与进程 PID。
-- **无边框启动兼容**：针对带 `--no-window-frame` 参数启动的 Blender，即便缺乏系统标题栏，也能通过快捷键平滑关闭或调整新弹出的偏好设置/属性窗口。
+3D 视图侧栏 > Dev 面板中提供 Blender 全部内置图标的浏览工具：
+- 按名称或视觉关键词搜索（如 "sun"、"eye"、"hand"）
+- 四种分类模式：紧凑(5类) / 标准(18类) / 前缀分组 / 扁平列表
+- 点击图标复制名称到剪贴板
+- 可调图标大小和是否显示名称
 
-### 2. 节点树排版与调试 (`my_arrange_nodes.py` & `show_node_info.py`)
-- **自动对齐**：使用 `node.my_arrange_all_nodes` 自动清理整洁节点图。
-- **调试面板**：在节点编辑器的侧边栏直接读取选中节点的真实 `bl_idname` 与端口列表，单击按钮即可复制文本到剪贴板，非常适合开发节点插件与 Python 脚本。
+### 命名属性菜单 (`my_named_attributes.py`)
 
-### 3. 编辑器分组切换 (`my_editor_switch.py` & `my_asset_window.py`)
-- 提供简易高效的组别导航：
-  - **Group 1**: Geometry Nodes, Shader Nodes (Object/World), Image Editor, Dope Sheet, Timeline, Text Editor.
-  - **Group 2**: Properties, Python Console.
-  - **Group 3**: Spreadsheet, Asset Browser, File Browser.
-- 提供居中悬浮式 Asset Browser 独立窗口弹出功能。
+在几何节点编辑器的菜单栏添加"命名属性"菜单：
+- 列出当前活动对象的所有自定义属性（按域分类显示）
+- 点击属性自动在节点树中添加对应类型的 Named Attribute 节点
 
-### 4. 内置图标预览器 (`my_icon_viewer.py`)
-- 内置丰富的 Blender 图标映射字典，支持模糊检索、分类查看及图标标识快速复制，提升开发 UI 面板时的效率。
+### 节点信息面板 (`show_node_info.py`)
 
-### 5. 渐变色带增强 (`my_color_ramp.py`)
-- 方便对界面中的 `ColorRamp` 控件进行深层读写操作，轻松复制/粘贴色带数据或应用调色模板。
+在节点编辑器的活动节点属性面板顶部添加信息摘要：
+- 显示节点名称、类型、位置、尺寸
+- 列出所有输入/输出接口的名称和标识符
+- 可直接切换接口的隐藏状态
 
----
+### 资产浏览器窗口 (`my_asset_window.py`)
 
-## 📦 安装与使用方法
+在电子表格标题栏添加"Asset Browser"按钮：
+- 通过 `userpref_show()` 打开新窗口并切换为资产浏览器
+- 偏好设置窗口会记忆上次的位置和尺寸，因此资产浏览器窗口也会保持一致
 
-1. **打包/下载插件**：
-   将本仓库代码压缩为 `.zip` 文件（或直接保留目录文件夹）。
+### 通用操作符 (`my_operators.py`)
 
-2. **在 Blender 中安装**：
-   - 打开 Blender (4.2+)。
-   - 进入 `Edit (编辑)` -> `Preferences (偏好设置)` -> `Add-ons (插件)`。
-   - 点击右上角箭头菜单选择 `Install from Disk... (从磁盘安装)`，选择本插件包。
-   - 勾选启用 **b3d** 插件。
+- **表达式测试** (`dev.expr_test`)：弹出对话框执行 Python 表达式，支持 `context`/`bpy`/`D` 快捷变量
+- **复制文本** (`b3d.copy_text`)：将指定文本复制到剪贴板
+- **切换帧结束** (`Alt+Shift+E`)：在 250 和 3000 帧之间切换场景结束帧
+- **切换线框显示** (`Alt+Shift+W`)：切换活动网格对象的线框显示
+- **窗口复制/全屏** (`Alt+Shift+D`)：智能处理当前区域 — 多区域时弹出独立窗口（Properties/Outliner 会自动调整尺寸），单区域时切换全屏或关闭窗口
 
----
+### 跨平台窗口助手 (`platform_window.py`)
 
-## 📁 目录结构
+封装 Win32 (Windows) 和 X11 (Linux) 的窗口操作 API：
+- 获取前台窗口、窗口 PID、屏幕尺寸、窗口矩形
+- 移动和调整窗口位置/大小
 
-```text
-b3d/
-├── __init__.py                # 插件主入口及自动注册机制
-├── auto_load.py               # 自动模块加载工具
-├── blender_manifest.toml      # Blender 4.2+ Extension 清单配置
-├── my_arrange_nodes.py        # 节点自动布局与规则定义
-├── my_asset_window.py         # 居中资产浏览器窗口生成器
-├── my_color_ramp.py           # ColorRamp 渐变色带实用工具
-├── my_editor_switch.py        # 编辑器快速分组切换器
-├── my_icon_viewer.py          # Blender 内置图标预览与检索面板
-├── my_named_attributes.py     # 命名属性节点快捷添加
-├── my_operators.py            # 核心快捷键算子与窗口控制逻辑
-├── platform_window.py         # 跨平台 (Linux/Win32) 原生窗口底层控制
-├── show_node_info.py          # 节点调试信息与名称复制面板
-├── rules.json                 # 节点排版规则配置文件
-└── pyproject.toml             # Python 项目元数据配置
-```
+## 安装
 
----
+1. 将整个 `b3d` 文件夹放入 Blender 的 `scripts/addons` 目录
+2. 在偏好设置 > 插件中搜索 "b3d" 并启用
 
-## 📄 开源协议
+## 快捷键速查
 
-本项目遵循 **GPL-3.0-or-later** 开源协议。
+| 快捷键 | 功能 | 作用域 |
+|--------|------|--------|
+| `Alt+Shift+F` | 排列所有节点 | 节点编辑器 |
+| `Alt+Shift+Q` | 优化节点树 | 节点编辑器 |
+| `Alt+Shift+E` | 切换帧结束 (250/3000) | 3D 视图 |
+| `Alt+Shift+W` | 切换线框显示 | 3D 视图 |
+| `Alt+Shift+D` | 复制/全屏窗口 | 多种编辑器 |
+| `Alt+`` | 循环切换编辑器 | 多种编辑器 |
