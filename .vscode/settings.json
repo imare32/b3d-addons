@@ -1,22 +1,17 @@
 {
-  "blender.additionalArguments": [
-    "--no-window-frame"
-    // "--factory-startup"
-    // "--open-last",
-  ],
   "blender.addon.justMyCode": false,
   "blender.environmentVariables": {
-    // "BLENDER_USER_RESOURCES": "/home/imare/blender/5.2",
-    // "PYDEVD_DISABLE_FILE_VALIDATION": 1
+    "BLENDER_USER_RESOURCES": "C:\\git\\blender\\5.2",
+    "PYDEVD_DISABLE_FILE_VALIDATION": 1
   },
   "blender.executables": [
     {
       "isDefault": true,
-      "name": "Blender 5.2.0 LTS",
-      "path": "/home/imare/Programs/blender-5.2.0-linux-x64/blender"
+      "name": "Blender 5.2.2 LTS",
+      "path": "C:\\Programs\\blender-5.2.2-windows-x64\\blender.exe"
     }
   ],
   "python.analysis.extraPaths": [
-    "/home/imare/blender/5.2/scripts/modules"
+    "C:\\git\\blender\\5.2\\scripts\\modules"
   ]
 }

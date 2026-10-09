@@ -62,8 +62,9 @@ class SetSceneFrameEnd(bpy.types.Operator):
 
         def draw(self: bpy.types.UIPopupMenu, context):
             self.layout.prop(context.scene, "frame_end")
+            self.layout.prop(context.scene, "frame_current")
 
-        bpy.context.window_manager.popup_menu(draw, title="Set frame end", icon="BLENDER")
+        bpy.context.window_manager.popup_menu(draw, title="Set Frame", icon="BLENDER")
 
         return {"FINISHED"}
 
