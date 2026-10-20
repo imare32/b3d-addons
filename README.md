@@ -2,6 +2,63 @@
 
 个人 Blender 插件，集合了多个提升工作效率的小工具。支持 Blender 4.2+，通过 `auto_load` 模块自动注册所有功能。
 
+## Shell
+
+- **PowerShell 7.x** (`pwsh`)
+
+## Blender
+
+- **路径**: `C:\Programs\blender-5.2.2-windows-x64\blender.exe`
+- **版本**: 5.2.2 LTS
+
+### 环境变量
+
+| 变量 | 值 | 说明 |
+|---|---|---|
+| `BLENDER_USER_RESOURCES` | `C:\git\blender\5.2` | 用户资源目录 |
+| `PYDEVD_DISABLE_FILE_VALIDATION` | `1` | 禁用 pydevd 文件校验 |
+
+### Python 环境
+
+- **系统Python**: `C:\Program Files\Python313\python.exe` 已添加进环境变量
+
+- **捆绑解释器**: `C:\Programs\blender-5.2.2-windows-x64\5.2\python\bin\python.exe`
+- **第三方库目标目录**: `C:\git\blender\5.2\scripts\modules`
+
+Blender 启动时会将该目录加入 `sys.path`，因此内嵌 Python 可直接 `import` 已安装的第三方库。
+
+**安装第三方库**（不污染 Blender 本体）：
+
+```powershell
+& "C:\Programs\blender-5.2.2-windows-x64\5.2\python\bin\python.exe" -m pip install <pkg> --target "C:\git\blender\5.2\scripts\modules"
+```
+
+### VSCode 插件开发
+
+Starting blender: C:\Programs\blender-5.2.2-windows-x64\blender.exe --python c:\Users\Administrator\.vscode\extensions\jacqueslucke.blender-development-0.0.31\pythonFiles\launch.py
+
+"ADDONS_TO_LOAD": "[{\"load_dir\":\"c:\\git\\b3d\",\"module_name\":\"b3d\"}]"
+
+"pathMappings": [
+  {
+    "localRoot": "C:\\git\\b3d",
+    "remoteRoot": "C:\\git\\blender\\5.2\\extensions\\vscode_development\\b3d"
+  }
+]
+
+本项目的路径已经添加了符号链接到了 Blender 的插件目录，所以不需要执行安装
+
+代码被修改后 用户在 VSCode 当中手动按 F6 快捷键即可热加载插件
+
+  {
+    "key": "f6",
+    "command": "blender.reloadAddons"
+  },
+  {
+    "key": "f8",
+    "command": "blender.runScript",
+  },
+
 ## 功能概览
 
 ### 节点编辑器增强 (`my_arrange_nodes.py`)
@@ -72,10 +129,13 @@
 - 获取前台窗口、窗口 PID、屏幕尺寸、窗口矩形
 - 移动和调整窗口位置/大小
 
-## 安装
+### 生成式 Zellij (`zellij/`)
 
-1. 将整个 `b3d` 文件夹放入 Blender 的 `scripts/addons` 目录
-2. 在偏好设置 > 插件中搜索 "b3d" 并启用
+Craig S. Kaplan 的 *Generative Zellij* p5.js 草图的 1:1 算法移植，在对象局部 XY 平面生成
+分层的 Grease Pencil 对象。侧栏 `View3D > UI > Zellij`：Seed / Size / Density / Focus /
+Shimmer、三组描边宽度与不透明度、SVG 导出，以及一键把所有视口切成 Attribute 着色。
+
+详细说明（图层结构、修改器、算法取舍、常量表）见 [`zellij/README.md`](zellij/README.md)。
 
 ## 快捷键速查
 
