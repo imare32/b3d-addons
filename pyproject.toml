@@ -8,6 +8,8 @@ dependencies = []
 
 [tool.ruff]
 # Only use ruff to format the code, this project does not need linting
+
+[tool.ruff.lint]
 ignore = [
     "E402", # module level import not at top of file
     "E722", # do not use bare 'except'
@@ -19,7 +21,8 @@ ignore = [
     "E741", # Ambiguous variable name: `l`
     "F841", # local variable is assigned to but never used
     "RUF012", # Mutable default value for class attribute
-]
+    "BLE001" # Do not catch blind exception: `Exception`
+]    
 
 [tool.uv]
 index-url = "https://pypi.tuna.tsinghua.edu.cn/simple/"

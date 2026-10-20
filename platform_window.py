@@ -1,6 +1,6 @@
-import os
 import sys
 import ctypes
+
 
 class WindowHelper:
     def __init__(self):
@@ -31,7 +31,14 @@ class WindowHelper:
             self.GetSystemMetrics.restype = ctypes.c_int
 
             self.MoveWindow = user32.MoveWindow
-            self.MoveWindow.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_bool]
+            self.MoveWindow.argtypes = [
+                ctypes.c_void_p,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_bool,
+            ]
             self.MoveWindow.restype = ctypes.c_bool
 
             self.GetWindowRect = user32.GetWindowRect
@@ -42,27 +49,39 @@ class WindowHelper:
 
     def _setup_linux(self):
         try:
-            from ctypes import c_ulong, c_int, c_char_p, c_void_p, POINTER, c_long, c_uint, c_ubyte, Structure, Union
-            self.x11 = ctypes.cdll.LoadLibrary('libX11.so.6')
+            from ctypes import (
+                c_ulong,
+                c_int,
+                c_char_p,
+                c_void_p,
+                POINTER,
+                c_long,
+                c_uint,
+                c_ubyte,
+                Structure,
+                Union,
+            )
+
+            self.x11 = ctypes.cdll.LoadLibrary("libX11.so.6")
             x11 = self.x11
 
             class XClientMessageEvent(Structure):
                 _fields_ = [
-                    ('type', c_int),
-                    ('serial', c_ulong),
-                    ('send_event', c_int),
-                    ('display', c_void_p),
-                    ('window', c_ulong),
-                    ('message_type', c_ulong),
-                    ('format', c_int),
-                    ('data_l', c_long * 5)
+                    ("type", c_int),
+                    ("serial", c_ulong),
+                    ("send_event", c_int),
+                    ("display", c_void_p),
+                    ("window", c_ulong),
+                    ("message_type", c_ulong),
+                    ("format", c_int),
+                    ("data_l", c_long * 5),
                 ]
 
             class XEvent(Union):
                 _fields_ = [
-                    ('type', c_int),
-                    ('xclient', XClientMessageEvent),
-                    ('pad', c_long * 24)
+                    ("type", c_int),
+                    ("xclient", XClientMessageEvent),
+                    ("pad", c_long * 24),
                 ]
 
             self.XEvent = XEvent
@@ -78,27 +97,63 @@ class WindowHelper:
             x11.XInternAtom.restype = c_ulong
 
             x11.XGetWindowProperty.argtypes = [
-                c_void_p, c_ulong, c_ulong, c_long, c_long,
-                c_int, c_ulong, POINTER(c_ulong), POINTER(c_int), POINTER(c_ulong), POINTER(c_ulong), POINTER(POINTER(c_ubyte))
+                c_void_p,
+                c_ulong,
+                c_ulong,
+                c_long,
+                c_long,
+                c_int,
+                c_ulong,
+                POINTER(c_ulong),
+                POINTER(c_int),
+                POINTER(c_ulong),
+                POINTER(c_ulong),
+                POINTER(POINTER(c_ubyte)),
             ]
             x11.XGetWindowProperty.restype = c_int
 
             x11.XGetGeometry.argtypes = [
-                c_void_p, c_ulong, POINTER(c_ulong), POINTER(c_int), POINTER(c_int),
-                POINTER(c_uint), POINTER(c_uint), POINTER(c_uint), POINTER(c_uint)
+                c_void_p,
+                c_ulong,
+                POINTER(c_ulong),
+                POINTER(c_int),
+                POINTER(c_int),
+                POINTER(c_uint),
+                POINTER(c_uint),
+                POINTER(c_uint),
+                POINTER(c_uint),
             ]
             x11.XGetGeometry.restype = c_int
 
             x11.XTranslateCoordinates.argtypes = [
-                c_void_p, c_ulong, c_ulong, c_int, c_int,
-                POINTER(c_int), POINTER(c_int), POINTER(c_ulong)
+                c_void_p,
+                c_ulong,
+                c_ulong,
+                c_int,
+                c_int,
+                POINTER(c_int),
+                POINTER(c_int),
+                POINTER(c_ulong),
             ]
             x11.XTranslateCoordinates.restype = c_int
 
-            x11.XMoveResizeWindow.argtypes = [c_void_p, c_ulong, c_int, c_int, c_uint, c_uint]
+            x11.XMoveResizeWindow.argtypes = [
+                c_void_p,
+                c_ulong,
+                c_int,
+                c_int,
+                c_uint,
+                c_uint,
+            ]
             x11.XMoveResizeWindow.restype = c_int
 
-            x11.XSendEvent.argtypes = [c_void_p, c_ulong, c_int, c_long, POINTER(XEvent)]
+            x11.XSendEvent.argtypes = [
+                c_void_p,
+                c_ulong,
+                c_int,
+                c_long,
+                POINTER(XEvent),
+            ]
             x11.XSendEvent.restype = c_int
 
             x11.XDisplayWidth.argtypes = [c_void_p, c_int]
@@ -131,14 +186,30 @@ class WindowHelper:
                 return None
             try:
                 from ctypes import c_ulong, c_int, POINTER, byref, c_ubyte
+
                 root = self.x11.XDefaultRootWindow(display)
-                atom_active = self.x11.XInternAtom(display, b'_NET_ACTIVE_WINDOW', 0)
-                actual_type, actual_format, nitems, bytes_after = c_ulong(), c_int(), c_ulong(), c_ulong()
+                atom_active = self.x11.XInternAtom(display, b"_NET_ACTIVE_WINDOW", 0)
+                actual_type, actual_format, nitems, bytes_after = (
+                    c_ulong(),
+                    c_int(),
+                    c_ulong(),
+                    c_ulong(),
+                )
                 prop = POINTER(c_ubyte)()
-                
+
                 status = self.x11.XGetWindowProperty(
-                    display, root, atom_active, 0, 1, 0, 0,
-                    byref(actual_type), byref(actual_format), byref(nitems), byref(bytes_after), byref(prop)
+                    display,
+                    root,
+                    atom_active,
+                    0,
+                    1,
+                    0,
+                    0,
+                    byref(actual_type),
+                    byref(actual_format),
+                    byref(nitems),
+                    byref(bytes_after),
+                    byref(prop),
                 )
                 if status == 0 and prop:
                     win_id = ctypes.cast(prop, POINTER(c_ulong)).contents.value
@@ -166,12 +237,28 @@ class WindowHelper:
                 return None
             try:
                 from ctypes import c_ulong, c_int, POINTER, byref, c_ubyte
-                atom_pid = self.x11.XInternAtom(display, b'_NET_WM_PID', 0)
-                actual_type, actual_format, nitems, bytes_after = c_ulong(), c_int(), c_ulong(), c_ulong()
+
+                atom_pid = self.x11.XInternAtom(display, b"_NET_WM_PID", 0)
+                actual_type, actual_format, nitems, bytes_after = (
+                    c_ulong(),
+                    c_int(),
+                    c_ulong(),
+                    c_ulong(),
+                )
                 prop_pid = POINTER(c_ubyte)()
                 status_pid = self.x11.XGetWindowProperty(
-                    display, hwnd_or_id, atom_pid, 0, 1, 0, 0,
-                    byref(actual_type), byref(actual_format), byref(nitems), byref(bytes_after), byref(prop_pid)
+                    display,
+                    hwnd_or_id,
+                    atom_pid,
+                    0,
+                    1,
+                    0,
+                    0,
+                    byref(actual_type),
+                    byref(actual_format),
+                    byref(nitems),
+                    byref(bytes_after),
+                    byref(prop_pid),
                 )
                 if status_pid == 0 and prop_pid and nitems.value > 0:
                     pid = ctypes.cast(prop_pid, POINTER(c_ulong)).contents.value
@@ -208,6 +295,7 @@ class WindowHelper:
             return None
         if self.is_win32:
             try:
+
                 class RECT(ctypes.Structure):
                     _fields_ = [
                         ("left", ctypes.c_long),
@@ -215,6 +303,7 @@ class WindowHelper:
                         ("right", ctypes.c_long),
                         ("bottom", ctypes.c_long),
                     ]
+
                 rect = RECT()
                 if self.GetWindowRect(hwnd_or_id, ctypes.byref(rect)):
                     w = rect.right - rect.left
@@ -228,13 +317,38 @@ class WindowHelper:
                 return None
             try:
                 from ctypes import c_ulong, c_int, c_uint, byref
+
                 root = self.x11.XDefaultRootWindow(display)
                 root_ret, x_ret, y_ret = c_ulong(), c_int(), c_int()
-                w_ret, h_ret, border_ret, depth_ret = c_uint(), c_uint(), c_uint(), c_uint()
-                self.x11.XGetGeometry(display, hwnd_or_id, byref(root_ret), byref(x_ret), byref(y_ret), byref(w_ret), byref(h_ret), byref(border_ret), byref(depth_ret))
-                
+                w_ret, h_ret, border_ret, depth_ret = (
+                    c_uint(),
+                    c_uint(),
+                    c_uint(),
+                    c_uint(),
+                )
+                self.x11.XGetGeometry(
+                    display,
+                    hwnd_or_id,
+                    byref(root_ret),
+                    byref(x_ret),
+                    byref(y_ret),
+                    byref(w_ret),
+                    byref(h_ret),
+                    byref(border_ret),
+                    byref(depth_ret),
+                )
+
                 dest_x, dest_y, child_ret = c_int(), c_int(), c_ulong()
-                self.x11.XTranslateCoordinates(display, hwnd_or_id, root, 0, 0, byref(dest_x), byref(dest_y), byref(child_ret))
+                self.x11.XTranslateCoordinates(
+                    display,
+                    hwnd_or_id,
+                    root,
+                    0,
+                    0,
+                    byref(dest_x),
+                    byref(dest_y),
+                    byref(child_ret),
+                )
                 left = dest_x.value
                 top = dest_y.value
                 w = w_ret.value
@@ -251,7 +365,11 @@ class WindowHelper:
             return False
         if self.is_win32:
             try:
-                return bool(self.MoveWindow(hwnd_or_id, int(x), int(y), int(width), int(height), True))
+                return bool(
+                    self.MoveWindow(
+                        hwnd_or_id, int(x), int(y), int(width), int(height), True
+                    )
+                )
             except Exception:
                 return False
         elif self.is_linux and self.x11:
@@ -260,9 +378,12 @@ class WindowHelper:
                 return False
             try:
                 from ctypes import byref
+
                 root = self.x11.XDefaultRootWindow(display)
-                atom_moveresize = self.x11.XInternAtom(display, b'_NET_MOVERESIZE_WINDOW', 0)
-                
+                atom_moveresize = self.x11.XInternAtom(
+                    display, b"_NET_MOVERESIZE_WINDOW", 0
+                )
+
                 event = self.XEvent()
                 event.xclient.type = 33
                 event.xclient.serial = 0
@@ -276,10 +397,12 @@ class WindowHelper:
                 event.xclient.data_l[2] = int(y)
                 event.xclient.data_l[3] = int(width)
                 event.xclient.data_l[4] = int(height)
-                
+
                 mask = (1 << 19) | (1 << 20)
                 self.x11.XSendEvent(display, root, False, mask, byref(event))
-                self.x11.XMoveResizeWindow(display, hwnd_or_id, int(x), int(y), int(width), int(height))
+                self.x11.XMoveResizeWindow(
+                    display, hwnd_or_id, int(x), int(y), int(width), int(height)
+                )
                 self.x11.XFlush(display)
                 return True
             except Exception:
@@ -287,6 +410,7 @@ class WindowHelper:
             finally:
                 self.x11.XCloseDisplay(display)
         return False
+
 
 # Shared singleton instance for the addon
 window_helper = WindowHelper()

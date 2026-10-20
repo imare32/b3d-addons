@@ -82,7 +82,10 @@ class DuplicateOrFullscreenWindow(bpy.types.Operator):
         is_outliner = area_type == "OUTLINER"
 
         if area_count == 1:
-            if area_type not in ["PROPERTIES", "OUTLINER", "PREFERENCES"] and context.window.height < 1080:
+            if (
+                area_type not in ["PROPERTIES", "OUTLINER", "PREFERENCES"]
+                and context.window.height < 1080
+            ):
                 bpy.ops.wm.window_fullscreen_toggle()
             else:
                 bpy.ops.wm.window_close()
@@ -95,6 +98,7 @@ class DuplicateOrFullscreenWindow(bpy.types.Operator):
                 initial_foreground = window_helper.get_foreground_window()
 
                 if initial_foreground is not None:
+
                     class WindowResizer:
                         def __init__(self, mode):
                             self.attempts = 0
@@ -165,7 +169,9 @@ class DuplicateOrFullscreenWindow(bpy.types.Operator):
                             override = {
                                 "window": new_win,
                                 "screen": new_win.screen,
-                                "area": new_win.screen.areas[0] if (new_win.screen and new_win.screen.areas) else None,
+                                "area": new_win.screen.areas[0]
+                                if (new_win.screen and new_win.screen.areas)
+                                else None,
                                 "workspace": context.workspace,
                             }
                             try:
@@ -179,7 +185,9 @@ class DuplicateOrFullscreenWindow(bpy.types.Operator):
                             return None
                         return 0.05
 
-                bpy.app.timers.register(WindowMaximizer(initial_windows), first_interval=0.05)
+                bpy.app.timers.register(
+                    WindowMaximizer(initial_windows), first_interval=0.05
+                )
 
             bpy.ops.screen.area_dupli("INVOKE_DEFAULT")
 
@@ -195,7 +203,7 @@ class ToggleWireframeShow(bpy.types.Operator):
 
     def execute(self, context):
         obj = context.active_object
-        if obj is not None and obj.type == "MESH":
+        if obj is not None and obj.type in ("MESH", "GREASEPENCIL"):
             obj.show_wire = not obj.show_wire
         return {"FINISHED"}
 
