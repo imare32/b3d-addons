@@ -19,7 +19,7 @@ def get_color_ramp(context):
 
     # Case 3: Fallback check for property named "color_ramp" on the pointer
     if hasattr(ptr, "color_ramp"):
-        val = getattr(ptr, "color_ramp")
+        val = ptr.color_ramp
         if isinstance(val, bpy.types.ColorRamp):
             return val
 

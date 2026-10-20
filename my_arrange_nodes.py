@@ -1,4 +1,5 @@
 import json
+import traceback
 from pathlib import Path
 
 import bpy
@@ -13,7 +14,7 @@ class NODE_OT_my_arrange_all_nodes(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        space = context.space_data
+        space = getattr(context, "space_data", None)
         return (
             space is not None
             and space.type == "NODE_EDITOR"
@@ -21,32 +22,107 @@ class NODE_OT_my_arrange_all_nodes(bpy.types.Operator):
         )
 
     def execute(self, context):
-        ntree = context.space_data.edit_tree
-        if not ntree:
-            self.report({"WARNING"}, "No active node tree found")
+        try:
+            return self._arrange(context)
+        except Exception as e:
+            traceback.print_exc()
+            self.report({"ERROR"}, f"Arrange failed: {type(e).__name__}: {e}")
             return {"CANCELLED"}
 
-        # Save all nodes select state
-        original_selection = {}
-        for node in ntree.nodes:
-            original_selection[node] = node.select
+    def _get_tree(self, context):
+        """Return the node tree to arrange, reporting why it cannot be used."""
+        space = context.space_data
+        if space is None or space.type != "NODE_EDITOR":
+            self.report({"ERROR"}, "Run this operator from a Node Editor")
+            return None
 
-        # Select all nodes
-        for node in ntree.nodes:
-            node.select = True
+        ntree = space.edit_tree
+        if ntree is None:
+            self.report({"WARNING"}, "No active node tree found")
+            return None
 
-        # Try to arrange
-        try:
-            bpy.ops.node.na_arrange_selected()
-        except Exception:
-            pass
+        # Linked or read only data cannot be rearranged.
+        if getattr(ntree, "library", None) is not None or getattr(
+            ntree, "is_library_indirect", False
+        ):
+            self.report(
+                {"ERROR"},
+                f"Node tree '{ntree.name}' is linked from another blend file, "
+                f"make it local before arranging",
+            )
+            return None
+        if getattr(ntree, "is_editable", True) is False:
+            self.report({"ERROR"}, f"Node tree '{ntree.name}' is not editable")
+            return None
 
-        # Restore all nodes select state
-        for node, selected in original_selection.items():
+        return ntree
+
+    def _restore_selection(self, ntree, original_selection):
+        """Restore the saved selection state, node by node, never raises."""
+        failed = []
+        for name, selected in original_selection.items():
             try:
+                node = ntree.nodes.get(name)
+                if node is None:
+                    # Removed while arranging, nothing to restore.
+                    continue
                 node.select = selected
-            except ReferenceError:
-                pass
+            except (ReferenceError, AttributeError, TypeError):
+                failed.append(name)
+
+        if failed:
+            self.report(
+                {"WARNING"},
+                f"Could not restore the selection of {len(failed)} node(s): "
+                f"{', '.join(failed[:3])}",
+            )
+
+    def _arrange(self, context):
+        ntree = self._get_tree(context)
+        if ntree is None:
+            return {"CANCELLED"}
+
+        nodes = list(ntree.nodes)
+        if not nodes:
+            self.report({"WARNING"}, f"Node tree '{ntree.name}' is empty")
+            return {"CANCELLED"}
+
+        undefined = [node.name for node in nodes if node.bl_idname == "NodeUndefined"]
+        if undefined:
+            self.report(
+                {"WARNING"},
+                f"{len(undefined)} undefined node(s) (missing addon), arrange may "
+                f"fail: {', '.join(undefined[:3])}",
+            )
+
+        arrange_op = getattr(bpy.ops.node, "na_arrange_selected", None)
+        if arrange_op is None:
+            self.report(
+                {"ERROR"},
+                "Operator 'node.na_arrange_selected' is not available, "
+                "enable the 'Node Arrange' addon first",
+            )
+            return {"CANCELLED"}
+
+        # Save the selection state by NAME: the arrange operator may free nodes,
+        # so Python references to them must not be kept across the call.
+        original_selection = {node.name: node.select for node in nodes}
+
+        try:
+            for node in nodes:
+                node.select = True
+
+            result = arrange_op()
+            if result and "FINISHED" not in result:
+                self.report(
+                    {"WARNING"},
+                    f"Arrange operator returned {set(result)} for {len(nodes)} node(s)",
+                )
+        except RuntimeError as e:
+            self.report({"ERROR"}, f"Arrange operator failed: {e}")
+            return {"CANCELLED"}
+        finally:
+            self._restore_selection(ntree, original_selection)
 
         return {"FINISHED"}
 
@@ -111,11 +187,7 @@ def dispatch_group_input_node(node_group: bpy.types.NodeTree):
                 if link.from_node.bl_idname == "NodeGroupInput":
                     if (
                         len(
-                            set(
-                                l.to_node
-                                for o in link.from_node.outputs
-                                for l in o.links
-                            )
+                            {l.to_node for o in link.from_node.outputs for l in o.links}
                         )
                         == 1
                     ):
@@ -155,7 +227,7 @@ def dispatch_feed_input_node(node_group: bpy.types.NodeTree):
             link: bpy.types.NodeLink = socketi.links[0]
             from_node = link.from_node
             if from_node.bl_idname in bl_idnames:
-                if len(set(l.to_node for o in from_node.outputs for l in o.links)) <= 1:
+                if len({l.to_node for o in from_node.outputs for l in o.links}) <= 1:
                     continue
                 feed_node = node_group.nodes.new(from_node.bl_idname)
                 feed_node.select = False
@@ -303,5 +375,5 @@ def unregister():
         try:
             km.keymap_items.remove(kmi)
         except Exception:
-            pass
+            print("Error: Failed to unregister keymap item:", kmi.name)
     addon_keymaps.clear()
