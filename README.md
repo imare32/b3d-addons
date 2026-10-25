@@ -35,36 +35,103 @@ Blender 启动时会将该目录加入 `sys.path`，因此内嵌 Python 可直�
 
 ### VSCode 插件开发
 
-Starting blender: C:\Programs\blender-5.2.2-windows-x64\blender.exe --python c:\Users\Administrator\.vscode\extensions\jacqueslucke.blender-development-0.0.31\pythonFiles\launch.py
+使用 VSCode 扩展 **Blender Development**（`jacqueslucke.blender-development`）启动 Blender、附加 Python 调试器并热重载插件。
 
+#### 目录链接
+
+本项目通过目录联接（junction）直接链接到 Blender 的扩展目录，因此**不需要打包安装**，改完代码重载即可生效：
+
+| 链接位置 | 目标 |
+|---|---|
+| `C:\git\blender\5.2\extensions\vscode_development\b3d` | `C:\git\b3d` |
+
+```powershell
+New-Item -ItemType Junction -Path "C:\git\blender\5.2\extensions\vscode_development\b3d" -Target "C:\git\b3d"
+```
+
+其中 `vscode_development` 对应扩展设置 `blender.addon.extensionsRepository` 的默认值。
+
+#### 启动与加载
+
+执行 `Blender: Start` 后，扩展实际运行的命令为：
+
+```
+C:\Programs\blender-5.2.2-windows-x64\blender.exe --python C:\Users\Administrator\.vscode\extensions\jacqueslucke.blender-development-0.0.31\pythonFiles\launch.py
+```
+
+待加载的插件通过启动参数传给 `launch.py`：
+
+```json
 "ADDONS_TO_LOAD": "[{\"load_dir\":\"c:\\git\\b3d\",\"module_name\":\"b3d\"}]"
+```
 
+Blender 实际加载的是链接目录下的副本，调试器通过下面的路径映射把本地源码与运行代码对应起来（由扩展自动生成，无需手动填写）：
+
+```json
 "pathMappings": [
   {
     "localRoot": "C:\\git\\b3d",
     "remoteRoot": "C:\\git\\blender\\5.2\\extensions\\vscode_development\\b3d"
   }
 ]
+```
 
-本项目的路径已经添加了符号链接到了 Blender 的插件目录，所以不需要执行安装
+#### 快捷键（`keybindings.json`）
 
-代码被修改后 用户在 VSCode 当中手动按 F6 快捷键即可热加载插件
+```json
+[
+  { "key": "f6", "command": "blender.reloadAddons" },
+  { "key": "f8", "command": "blender.runScript" }
+]
+```
 
-  {
-    "key": "f6",
-    "command": "blender.reloadAddons"
-  },
-  {
-    "key": "f8",
-    "command": "blender.runScript",
-  },
+| 命令 | 说明 |
+|---|---|
+| `blender.start` | 启动 Blender 并附加调试器 |
+| `blender.stop` | 关闭 Blender |
+| `blender.reloadAddons` | 热重载插件（绑定 `F6`） |
+| `blender.runScript` | 在 Blender 中运行当前脚本（绑定 `F8`） |
+
+> 也可开启 `blender.addon.reloadOnSave`，保存文件时自动重载。
+
+#### 通过 MCP 热重载（与启动方式无关）
+
+`F6` 只在 VSCode 扩展自己启动的 Blender 里有效。改用 MCP（`execute_blender_code`）则无此限制 ——
+只要 Blender 正在运行且 MCP 可用，无论它是怎么启动的，都能重载改动后的代码：
+
+```python
+import bpy, sys
+
+mod = next((a.module for a in bpy.context.preferences.addons
+            if a.module == "b3d" or a.module.endswith(".b3d")), None)
+
+bpy.ops.preferences.addon_disable(module=mod)
+for name in list(sys.modules):
+    if name == mod or name.startswith(mod + "."):
+        del sys.modules[name]
+bpy.ops.preferences.addon_enable(module=mod)
+```
+
+注意：
+
+- 必须走「禁用 → 清 `sys.modules` → 启用」。直接 `import b3d` 拿到的是旧模块，重复注册会导致类和快捷键重复。
+- 模块名取决于扩展仓库：VSCode 这边是 `bl_ext.vscode_development.b3d`，其他仓库前缀不同，所以用 `.b3d` 后缀匹配而不是写死。
+- 这套流程和扩展的 `blender.reloadAddons` 内部实现一致（disable → 删 `sys.modules` → enable），两条路可以混用，不会冲突。
+- 若 b3d 未作为插件启用（只是被 `import`），上面取不到 `mod`，需退回手动方式：
+
+```python
+import importlib, b3d
+b3d.unregister()
+importlib.reload(b3d)
+b3d.register()
+```
 
 ## 功能概览
 
 ### 节点编辑器增强 (`my_arrange_nodes.py`)
 
 - **一键排列节点** (`Alt+Shift+F`)：自动排列当前节点树中的所有节点，保留原有选择状态
-- **节点树优化** (`Alt+Shift+Q`)：一键清理和优化节点树，包括：
+- **节点树优化** (`Alt+Shift+Q`)：一键清理和优化节点树（按节点类型隐藏接口/选项的规则见 [`data/node_cleanup_rules.json`](data/node_cleanup_rules.json)），包括：
   - 移除 Reroute 节点（保留连接关系）
   - 替换已废弃节点为新版节点
   - 分发 Group Input 节点（减少长距离连线）
@@ -128,14 +195,6 @@ Starting blender: C:\Programs\blender-5.2.2-windows-x64\blender.exe --python c:\
 封装 Win32 (Windows) 和 X11 (Linux) 的窗口操作 API：
 - 获取前台窗口、窗口 PID、屏幕尺寸、窗口矩形
 - 移动和调整窗口位置/大小
-
-### 生成式 Zellij (`zellij/`)
-
-Craig S. Kaplan 的 *Generative Zellij* p5.js 草图的 1:1 算法移植，在对象局部 XY 平面生成
-分层的 Grease Pencil 对象。侧栏 `View3D > UI > Zellij`：Seed / Size / Density / Focus /
-Shimmer、三组描边宽度与不透明度、SVG 导出，以及一键把所有视口切成 Attribute 着色。
-
-详细说明（图层结构、修改器、算法取舍、常量表）见 [`zellij/README.md`](zellij/README.md)。
 
 ## 快捷键速查
 
