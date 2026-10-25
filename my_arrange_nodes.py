@@ -128,8 +128,12 @@ class NODE_OT_my_arrange_all_nodes(bpy.types.Operator):
 
 
 def load_rules():
-    """Load rules from JSON file"""
-    rules_path = Path(__file__).parent / "rules.json"
+    """加载节点整理规则
+
+    仅在执行「优化节点树」(Alt+Shift+Q) 时使用，用于按节点类型决定
+    是否隐藏未连接的接口、默认向量和选项，与节点排列无关。
+    """
+    rules_path = Path(__file__).parent / "data" / "node_cleanup_rules.json"
     try:
         with open(rules_path, "r", encoding="utf-8") as f:
             return json.load(f)

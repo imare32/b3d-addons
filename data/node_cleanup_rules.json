@@ -1,0 +1,69 @@
+{
+    "ShaderNodeTexCoord": {
+        "hide_unlinked_output_sockets": true,
+        "hide_options": true
+    },
+    "ShaderNodeMapping": {
+        "hide_default_vectors": true
+    },
+    "ShaderNodeGroup": {
+        "hide_options": true
+    },
+    "GeometryNodeTransform": {
+        "hide_options": true,
+        "hide_default_vectors": true
+    },
+    "ShaderNodeMath": {
+        "hide_options": true
+    },
+    "ShaderNodeVectorMath": {
+        "hide_options": true
+    },
+    "GeometryNodeInputNamedAttribute": {
+        "hide_options": true,
+        "hide_unlinked_output_sockets": true
+    },
+    "GeometryNodeObjectInfo": {
+        "hide_options": true,
+        "hide_unlinked_output_sockets": true
+    },
+    "GeometryNodeStoreNamedAttribute": {
+        "hide_options": true
+    },
+    "GeometryNodeGroup": {
+        "hide_options": true
+    },
+    "GeometryNodeInstanceOnPoints": {
+        "hide_default_vectors": true
+    },
+    "GeometryNodeTrimCurve": {
+        "hide_options": true
+    },
+    "ShaderNodeOutputMaterial": {
+        "hide_options": true
+    },
+    "FunctionNodeCompare": {
+        "hide_options": true
+    },
+    "FunctionNodeBooleanMath": {
+        "hide_options": true
+    },
+    "ShaderNodeMapRange": {
+        "hide_options": true
+    },
+    "GeometryNodeSwitch": {
+        "hide_options": true
+    },
+    "GeometryNodeAttributeStatistic": {
+        "hide_unlinked_output_sockets": true
+    },
+    "ShaderNodeNewGeometry": {
+        "hide_unlinked_output_sockets": true
+    },
+    "ShaderNodeMix": {
+        "hide_options": true
+    },
+    "GeometryNodeRemoveAttribute": {
+        "hide_options": true
+    }
+} 
