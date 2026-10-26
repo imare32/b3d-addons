@@ -28,6 +28,7 @@
 from __future__ import annotations
 
 import math
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass, field
 
 __all__ = ["Point", "Weave", "WeaveStyle", "build_weave"]
@@ -42,6 +43,10 @@ SNAP_RATIO = 2e-4
 #: 放大到吃掉整条带子，这里留一点余量给退化情况。``tuck=True`` 必须用真实的角度——
 #: 一旦在这儿截断，切口就短于需要的退让距离，一角戳进对方 footprint（见 ``_end_cut``）。
 SIN_FLOOR = 0.5
+
+#: 配对时"折返"的判定容差（出边方向的点积）：夹角明显小于 90° 才不配对，直角算一对。
+#: 不能用 0——直角转角的方向点积实测只有 ±5e-4 的噪声，严格比较会让同构结点的结果随机。
+PAIR_COS = 0.02
 
 #: 短于 ``STUB * 半径`` 的残段直接丢掉：它只会画成一个圆点。
 STUB = 0.5
@@ -339,7 +344,13 @@ def _edge_network(polygons, snap: float = 0.0):
 
 
 def _pair_edges(incident, points, edges):
-    """每个顶点上把出边两两配成"直通"——配对表就是带子的走向。"""
+    """每个顶点上把出边两两配成"直通"——配对表就是带子的走向。
+
+    只排除**折返**的配对（两条边指向同一侧，夹角 < 90°）。判据带一个 ``PAIR_COS`` 的
+    容差，不能写成 ``cos > 0``：直角（90°）的转角在数值上正好落在 0 附近（实测 |cos| ≤
+    5e-4），严格比较等于拿噪声决定配对——同一张旋转对称的图里，同构的直角拐角会有一半
+    配成带子、一半留成两个断头，渲染出来就是"一处尖头、一处圆头"。
+    """
     partner: dict[tuple[int, int], int] = {}
     for node_id, ends in enumerate(incident):
         if len(ends) < 2:
@@ -354,8 +365,8 @@ def _pair_edges(incident, points, edges):
         for i in range(len(ends)):
             for j in range(i + 1, len(ends)):
                 cos = dirs[i][0] * dirs[j][0] + dirs[i][1] * dirs[j][1]
-                if cos > 0.0:
-                    # 同向（夹角 < 90°）：带子在这里"折返"，不成对
+                if cos > PAIR_COS:
+                    # 同向（夹角明显小于 90°）：带子在这里"折返"，不成对
                     continue
                 candidates.append((_sin_between(dirs[i], dirs[j]), i, j))
         candidates.sort()
@@ -433,19 +444,21 @@ def _cumulative(points):
 
 
 def _at(points, cum, where: float) -> Point:
-    """弧长 ``where`` 处的插值点。"""
+    """弧长 ``where`` 处的插值点。
+
+    配对把整张边网串成几条**很长的闭合带子**之后（density 24 有几千个节点），这里必须
+    二分；线性扫会让每个切口都过一遍整根带子，实测慢二十倍。
+    """
     if where <= 0.0:
         return points[0]
     if where >= cum[-1]:
         return points[-1]
-    # 节点数不多（几十），线性扫比 bisect 更省事也够快
-    for i in range(1, len(cum)):
-        if cum[i] >= where:
-            span = cum[i] - cum[i - 1]
-            ratio = (where - cum[i - 1]) / span if span > 1e-12 else 0.0
-            a, b = points[i - 1], points[i]
-            return (a[0] + (b[0] - a[0]) * ratio, a[1] + (b[1] - a[1]) * ratio)
-    return points[-1]
+    index = bisect_left(cum, where)
+    index = 1 if index < 1 else index
+    span = cum[index] - cum[index - 1]
+    ratio = (where - cum[index - 1]) / span if span > 1e-12 else 0.0
+    a, b = points[index - 1], points[index]
+    return (a[0] + (b[0] - a[0]) * ratio, a[1] + (b[1] - a[1]) * ratio)
 
 
 def _slice(points, cum, start: float, end: float) -> list[Point]:
@@ -460,9 +473,10 @@ def _slice(points, cum, start: float, end: float) -> list[Point]:
         tail = _slice(points, cum, 0.0, end - total)
         return head + tail[1:]
     out = [_at(points, cum, start)]
-    for i in range(1, len(points) - 1):
-        if start < cum[i] < end:
-            out.append(points[i])
+    low = max(1, bisect_right(cum, start))
+    high = min(bisect_left(cum, end), len(points) - 1)
+    for i in range(low, high):
+        out.append(points[i])
     tail = _at(points, cum, end)
     if _dist(out[-1], tail) > 1e-9:
         out.append(tail)
@@ -860,6 +874,15 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
             tail = keep.pop()
             keep.append((tail[0], head[1] + total))
 
+        # 弧长位置 → 切口：端头类型与"压在下面"都要拿段的首尾去反查切口。原来是逐段扫
+        # 所有切口（O(段 × 切口)），配对把整张网串成几条长带子之后成了瓶颈（density 24
+        # 实测 750 万次 min/max/abs），先建表。
+        start_of: dict[float, tuple] = {}
+        exit_of: dict[float, tuple] = {}
+        for cut in cuts:
+            start_of.setdefault(round(min(max(cut[0], 0.0), total), 7), cut)
+            exit_of.setdefault(round(min(max(cut[1], 0.0), total), 7), cut)
+
         emitted: list[tuple[float, float, int]] = []
         for start, end in keep:
             if end - start < STUB * reach:
@@ -872,25 +895,24 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
                 if len(piece) < 2:
                     continue
             piece_id = len(paths)
-            flat_start = flat_end = False
             wrapped_end = end - total if end > total else end
-            for cut in cuts:
-                if abs(min(max(cut[0], 0.0), total) - wrapped_end) < 1e-9:
-                    flat_end = cut[3]  # 这一段结束在切口的"进侧"上
-                elif abs(min(max(cut[1], 0.0), total) - start) < 1e-9:
-                    flat_start = cut[4]  # 这一段从切口的"出侧"起步
+            entering = start_of.get(round(wrapped_end, 7))
+            leaving = exit_of.get(round(start, 7))
+            # 这一段结束在切口的"进侧"上 / 从切口的"出侧"起步
+            flat_end = bool(entering and entering[3])
+            flat_start = bool(leaving and leaving[4])
             paths.append((piece, unbroken))
             caps_out.append((flat_start, flat_end))
             emitted.append((start, end, piece_id))
             # 端头正好落在交叉点上 ⇒ 这一段是"压在下面"的
-            for where, at_end in ((start, True), (wrapped_end, False)):
-                for cut in cuts:
-                    value = cut[1] if at_end else cut[0]
-                    if abs(min(max(value, 0.0), total) - where) < 1e-9:
-                        piece_links.append((cut[2], piece_id, True))
-                        break
+            for cut in (leaving, entering):
+                if cut is not None:
+                    piece_links.append((cut[2], piece_id, True))
 
-        # 交叉点落在某一段的内部 ⇒ 这一段是"压在上面"的（绘制次序约束的另一半）
+        # 交叉点落在某一段的内部 ⇒ 这一段是"压在上面"的（绘制次序约束的另一半）。
+        # 段与交叉点都是按弧长递增的，用游标推进，别对每个交叉点都扫一遍所有段。
+        seam_piece = emitted[-1][2] if emitted and emitted[-1][1] > total else None
+        piece_cursor = 0
         for i in (range(count) if closed else range(1, count - 1)):
             node_id = nodes[i]
             if node_id not in crossings:
@@ -900,13 +922,16 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
             if pid is None or not is_over[pid]:
                 continue
             where = cum[i]
-            for start, end, piece_id in emitted:
-                if (
-                    start - 1e-9 <= where <= end + 1e-9
-                    or where + total <= end + 1e-9  # 跨接缝那一段的后半截
-                ):
-                    piece_links.append((node_id, piece_id, False))
-                    break
+            while piece_cursor < len(emitted) and emitted[piece_cursor][1] < where - 1e-9:
+                piece_cursor += 1
+            start, end, piece_id = (
+                emitted[piece_cursor] if piece_cursor < len(emitted) else (0.0, 0.0, -1)
+            )
+            if piece_id >= 0 and start - 1e-9 <= where <= end + 1e-9:
+                piece_links.append((node_id, piece_id, False))
+            elif seam_piece is not None and where + total <= emitted[-1][1] + 1e-9:
+                # 跨接缝那一段的后半截
+                piece_links.append((node_id, seam_piece, False))
 
     return result
 
