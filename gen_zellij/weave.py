@@ -46,6 +46,10 @@ STUB = 0.5
 #: 一颗浮着的小珠子比"这里不编"难看得多，而且同色不透明时叠画看不出来。
 PRUNE = 2.0
 
+#: 交叉角正弦高于此值（≈ 64°..116°）才用平头。实测交叉角只有 45° 和 90° 两种，
+#: 90° 时平头的切面正好压在对方带子的边缘线上，45° 时平头会甩出一个尖角缺口，不如圆头。
+FLAT_CAP_SIN = 0.9
+
 #: 修剪的迭代次数：每轮收回一刀，收敛极快，留几轮兜底。
 _PRUNE_PASSES = 8
 
@@ -54,10 +58,13 @@ _PRUNE_PASSES = 8
 class WeaveStyle:
     """编织的外观参数（都是世界单位 / 无量纲比率）。"""
 
-    #: 带子半宽（= 笔划半径，总宽 = 2×）。
-    half_width: float = 0.018
-    #: 缺口在"刚好贴住上方带子"之外再多留的量，单位是**带宽**（half_width 的倍数）。
-    gap_ratio: float = 0.25
+    #: 带子半宽（= 笔划半径，总宽 = 2×）；画布 10 下 0.010 左右是"勾缝"，0.03 以上带子本身就是主图。
+    half_width: float = 0.010
+    #: 描边（casing）半径；画在本体下面、比本体宽，露出的一圈就是"蕾丝边"。
+    #: 它不改变几何，只影响缺口要让开多少——所以缺口是按 ``max(half_width, casing)`` 算的。
+    casing: float = 0.0125
+    #: 缺口在"刚好贴住上方带子"之外再多留的量，单位是**可见半宽**的倍数。
+    gap_ratio: float = 0.0
     #: 端点聚类容差（世界单位）；0 = 按包围盒自动取 ``SNAP_RATIO``。
     snap: float = 0.0
 
@@ -68,6 +75,9 @@ class Weave:
 
     #: ``(点列, 是否闭合)``；闭合只出现在整根带子一处交叉都没有的时候。
     paths: list[tuple[list[Point], bool]] = field(default_factory=list)
+    #: 与 ``paths`` 一一对应：``(起点是否平头, 终点是否平头)``。平头只用在接近 90° 的
+    #: 交叉上（切面正好压在对方带子的边缘线上）；45° 交叉用圆头，一个切点更干净。
+    caps: list[tuple[bool, bool]] = field(default_factory=list)
     nodes: int = 0
     edges: int = 0
     strands: int = 0
@@ -457,18 +467,30 @@ def _subtract(total: float, cuts, closed: bool):
     return keep
 
 
-def _cut_distance(radius: float, gap: float, sin_angle: float) -> float:
+def _cut_distance(reach: float, gap: float, sin_angle: float, flat: bool) -> float:
     """压下去那一端要往回切多远。
 
-    笔划端点是圆头：GP 会在末点之外再糊出半个笔宽，所以"切到 ``d``"实际是"带子的
-    圆头尖停在 ``d - radius`` 处"。要让这个尖正好贴住上方带子的边缘::
+    ``reach`` 是**可见半宽**（本体与 casing 取大者），``sin(θ)`` 取该顶点上**最斜**的
+    那根交叉带（缺口取最大，宁可多切也不要戳出来）。两种端头两套公式：
 
-        (d - radius) * sin(θ) >= radius + gap
-        d = radius + (radius + gap) / sin(θ)
+    * **平头**（切面垂直于自己）：两个角到对方中心线是 ``d·sinθ ± reach·cosθ``，要让
+      靠里的角正好贴住对方边缘::
 
-    ``sin(θ)`` 取该顶点上**最斜**的那根交叉带（缺口取最大，宁可多切也不要戳出来）。
+          d = reach * (1 + cosθ) / sinθ = reach / tan(θ/2)
+
+      90° 时 ``d = reach``，切口正好压在对方边缘线上——这才是 Alhambra 那种"切进去"
+      的样子。45° 时靠外的角会甩出 ``2·reach·cosθ``，所以不用平头（见 ``FLAT_CAP_SIN``）；
+    * **圆头**：GP 会在末点之外再糊出半个笔宽，"切到 d"实际是"圆头尖停在 ``d - reach``
+      处"，于是::
+
+          (d - reach) * sin(θ) >= reach + gap
+          d = reach + (reach + gap) / sin(θ)
     """
-    return radius + (radius + gap) / max(sin_angle, SIN_FLOOR)
+    sine = max(sin_angle, SIN_FLOOR)
+    if flat:
+        cosine = math.sqrt(max(0.0, 1.0 - sine * sine))
+        return reach * (1.0 + cosine) / sine
+    return reach + (reach + gap) / sine
 
 
 # --- 主流程 ----------------------------------------------------------------
@@ -482,7 +504,10 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
     """
     style = style or WeaveStyle()
     radius = max(0.0, float(style.half_width))
-    gap = max(0.0, float(style.gap_ratio)) * radius
+    casing = max(0.0, float(style.casing))
+    #: 可见半宽：casing 画在本体下面且更宽，所以真正占地方、真正要被让开的是它。
+    reach = max(radius, casing)
+    gap = max(0.0, float(style.gap_ratio)) * max(reach, 1e-12)
 
     points, edges = _edge_network(polygons, style.snap)
     result = Weave(nodes=len(points), edges=len(edges))
@@ -611,8 +636,9 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
         if total <= 0.0:
             continue
 
-        cuts: list[tuple[float, float, int]] = []
-        if radius > 0.0:
+        # 每个切口：(进侧弧长, 出侧弧长, 交叉点, 进侧是否平头, 出侧是否平头)
+        cuts: list[tuple[float, float, int, bool, bool]] = []
+        if reach > 0.0:
             indices = range(count) if closed else range(1, count - 1)
             for i in indices:
                 node_id = nodes[i]
@@ -630,9 +656,12 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
                                   crossings[node_id], pid_node, pid_ends, points, edges)
                 sin_out = _min_sin(pid, _norm(_sub(points[next_node], here)),
                                    crossings[node_id], pid_node, pid_ends, points, edges)
-                d_in = _cut_distance(radius, gap, sin_in)
-                d_out = _cut_distance(radius, gap, sin_out)
-                cuts.append((cum[i] - d_in, cum[i] + d_out, node_id))
+                # 接近垂直的交叉用平头（切面正好压在对方边缘线上），45° 用圆头
+                flat_in = sin_in >= FLAT_CAP_SIN
+                flat_out = sin_out >= FLAT_CAP_SIN
+                d_in = _cut_distance(reach, gap, sin_in, flat_in)
+                d_out = _cut_distance(reach, gap, sin_out, flat_out)
+                cuts.append((cum[i] - d_in, cum[i] + d_out, node_id, flat_in, flat_out))
                 result.cuts += 1
 
         if not cuts:
@@ -642,26 +671,26 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
             unbroken = False
             if closed:
                 wrapped = []
-                for start, end, node_id in cuts:
+                for start, end, node_id, flat_in, flat_out in cuts:
                     if end > total:
-                        wrapped.append((start, total, node_id))
-                        wrapped.append((0.0, end - total, node_id))
+                        wrapped.append((start, total, node_id, flat_in, flat_out))
+                        wrapped.append((0.0, end - total, node_id, flat_in, flat_out))
                     elif start < 0.0:
-                        wrapped.append((0.0, end, node_id))
-                        wrapped.append((total + start, total, node_id))
+                        wrapped.append((0.0, end, node_id, flat_in, flat_out))
+                        wrapped.append((total + start, total, node_id, flat_in, flat_out))
                     else:
-                        wrapped.append((start, end, node_id))
+                        wrapped.append((start, end, node_id, flat_in, flat_out))
                 cuts = wrapped
             keep = _subtract(total, cuts, closed)
 
         # 残段修剪：缺口把一段切得比笔宽还短时，画出来就是一颗浮着的"珠子"，比"这里不编"
         # 难看得多。所以把切出这颗珠子的那一刀收回去：那个交叉点两根带子直接叠在一起，
         # 同色不透明的情况下完全看不出来（代价是该点失去上下之分）。
-        if keep and radius > 0.0:
+        if keep and reach > 0.0:
             for _ in range(_PRUNE_PASSES):
                 bead = None
                 for start, end in keep:
-                    if start > 0.0 and end < total and end - start < PRUNE * radius:
+                    if start > 0.0 and end < total and end - start < PRUNE * reach:
                         bead = start
                         break
                 if bead is None:
@@ -685,7 +714,7 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
 
         emitted: list[tuple[float, float, int]] = []
         for start, end in keep:
-            if end - start < STUB * radius:
+            if end - start < STUB * reach:
                 continue
             if unbroken:
                 piece = raw
@@ -694,7 +723,14 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
                 if len(piece) < 2:
                     continue
             piece_id = len(result.paths)
+            flat_start = flat_end = False
+            for cut in cuts:
+                if abs(min(max(cut[0], 0.0), total) - end) < 1e-9:
+                    flat_end = cut[3]  # 这一段结束在切口的"进侧"上
+                elif abs(min(max(cut[1], 0.0), total) - start) < 1e-9:
+                    flat_start = cut[4]  # 这一段从切口的"出侧"起步
             result.paths.append((piece, unbroken))
+            result.caps.append((flat_start, flat_end))
             emitted.append((start, end, piece_id))
             # 端头正好落在交叉点上 ⇒ 这一段是"压在下面"的
             for where, at_end in ((start, True), (end, False)):

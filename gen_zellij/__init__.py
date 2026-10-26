@@ -42,6 +42,7 @@ from .fillers import clusters, has, load, signatures
 from .scene import (
     LAYER_FILLS,
     LAYER_INTERLACE,
+    LAYER_INTERLACE_CASE,
     LAYER_LINES,
     LAYER_ORDER,
     LAYER_OUTLINES,
@@ -90,6 +91,7 @@ __all__ = [
     "LAYER_FILLS",
     "LAYER_OUTLINES",
     "LAYER_INTERLACE",
+    "LAYER_INTERLACE_CASE",
     "LAYER_TILING",
     "LAYER_LINES",
     "LAYER_ORDER",

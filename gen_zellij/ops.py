@@ -63,6 +63,7 @@ def _recolor(shapes, colours: dict):
             colours.get(shape.layer, shape.stroke),
             shape.closed,
             shape.layer,
+            shape.caps,
         )
         if shape.fill is None
         else shape
@@ -135,6 +136,7 @@ def _store(settings, obj, seed: int) -> None:
     obj[DESIGN_KEYS[6]] = float(settings.outline_radius)
     obj[DESIGN_KEYS[7]] = float(settings.interlace_radius)
     obj[DESIGN_KEYS[8]] = float(settings.interlace_gap)
+    obj[DESIGN_KEYS[9]] = float(settings.interlace_casing)
 
 
 class GENZ_OT_generate(bpy.types.Operator):
@@ -272,6 +274,8 @@ class GENZ_OT_sync_from_object(bpy.types.Operator):
             settings.interlace_radius = float(obj[keys[7]])
         if keys[8] in obj:
             settings.interlace_gap = float(obj[keys[8]])
+        if keys[9] in obj:
+            settings.interlace_casing = float(obj[keys[9]])
         settings.dirty = False
         self.report(
             {"INFO"}, f"read back seed={settings.seed} density={settings.density}"

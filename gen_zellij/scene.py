@@ -40,6 +40,7 @@ __all__ = [
     "LAYER_FILLS",
     "LAYER_OUTLINES",
     "LAYER_INTERLACE",
+    "LAYER_INTERLACE_CASE",
     "LAYER_TILING",
     "LAYER_LINES",
     "LAYER_ORDER",
@@ -74,12 +75,14 @@ STROKE_SATURATION = 1.35
 #: 编成上下交替的带子；``Tiling`` 是瓷砖分界线；``Lines`` 是构造线。
 LAYER_FILLS = "Fills"
 LAYER_OUTLINES = "Outlines"
+LAYER_INTERLACE_CASE = "Interlace Case"
 LAYER_INTERLACE = "Interlace"
 LAYER_TILING = "Tiling"
 LAYER_LINES = "Lines"
 LAYER_ORDER = (
     LAYER_FILLS,
     LAYER_OUTLINES,
+    LAYER_INTERLACE_CASE,
     LAYER_INTERLACE,
     LAYER_TILING,
     LAYER_LINES,
@@ -95,6 +98,8 @@ class Shape:
     stroke: RGBF | None
     closed: bool
     layer: str = LAYER_FILLS
+    #: ``(起点平头, 终点平头)``；默认圆头。平头是 GP 的 ``start_cap`` / ``end_cap``。
+    caps: tuple[bool, bool] = (False, False)
 
 
 def derived_stroke(colour: RGBF | None) -> RGBF:
@@ -358,13 +363,24 @@ def _interlace_shapes(fills: list[Shape], style: WeaveStyle) -> list[Shape]:
     """把填充分层的边网编成上下交替的带子（见 :mod:`weave`）。
 
     输入是**已经变换到世界坐标、并去重过**的填充多边形：共享边只留一条，否则同一段缝
-    会被两根带子争，over/under 无法自洽。输出是开口折线，缺口已经在几何里。
+    会被两根带子争，over/under 无法自洽。输出是开口折线，缺口、平头都已在几何里。
+
+    给了 ``style.casing`` 时，每根带子先出一条**更粗的描边**（独立图层，压在带子下面），
+    再出本体——露出来的那一圈就是蕾丝边。描边放独立图层而不是同层交错，是因为同层里
+    后画的描边会压到前一根带子的本体上（交叉处一根深线横穿别人的身体）。
     """
     result = build_weave([shape.points for shape in fills], style)
-    return [
-        Shape(points, None, BLACK, closed, LAYER_INTERLACE)
-        for points, closed in result.paths
-    ]
+    shapes: list[Shape] = []
+    if style.casing > 0.0:
+        shapes.extend(
+            Shape(points, None, BLACK, closed, LAYER_INTERLACE_CASE, caps)
+            for (points, closed), caps in zip(result.paths, result.caps)
+        )
+    shapes.extend(
+        Shape(points, None, BLACK, closed, LAYER_INTERLACE, caps)
+        for (points, closed), caps in zip(result.paths, result.caps)
+    )
+    return shapes
 
 
 def build_layers(
@@ -468,6 +484,7 @@ def _apply(shapes: list[Shape], matrix) -> list[Shape]:
             shape.stroke,
             shape.closed,
             shape.layer,
+            shape.caps,
         )
         for shape in shapes
     ]

@@ -9,11 +9,12 @@ import bpy
 
 from . import gp
 from .design import FOCUS_VALUES
-from .palette import SILK, hex_to_rgb
+from .palette import INK, SILK, hex_to_rgb
 from .rng import SEED_MAX
 from .scene import (
     LAYER_FILLS,
     LAYER_INTERLACE,
+    LAYER_INTERLACE_CASE,
     LAYER_LINES,
     LAYER_OUTLINES,
     LAYER_TILING,
@@ -32,6 +33,8 @@ __all__ = [
 
 #: 编织带的默认色：色板的绢白（sRGB 0..1）—— 真迹里石膏勾缝就是用这个色。
 HEX_SILK = hex_to_rgb(SILK)
+#: 编织描边的默认色：色板的墨玄，给绢白带子勾一圈细边。
+HEX_INK = hex_to_rgb(INK)
 
 #: Density 档位（面板顺序）。值以字符串存进枚举，取用时 ``int()``。
 DENSITY_ITEMS = [
@@ -56,6 +59,7 @@ DESIGN_KEYS = (
     "gen_zellij_outline_radius",
     "gen_zellij_interlace_radius",
     "gen_zellij_interlace_gap",
+    "gen_zellij_interlace_casing",
 )
 
 #: 焦点特征的**显示名**：标识（存进文件、写进对象参数）保持 ASCII 稳定，
@@ -69,6 +73,7 @@ FOCUS_LABELS = {
 LAYER_VISIBILITY = {
     LAYER_FILLS: "show_fills",
     LAYER_OUTLINES: "show_outlines",
+    LAYER_INTERLACE_CASE: "show_interlace_case",
     LAYER_INTERLACE: "show_interlace",
     LAYER_TILING: "show_tiling",
     LAYER_LINES: "show_lines",
@@ -215,6 +220,13 @@ class GenZellijSettings(bpy.types.PropertyGroup):
         update=_apply_visibility,
     )
 
+    show_interlace_case: bpy.props.BoolProperty(  # type: ignore[valid-type]
+        name="编织描边",
+        description="带子下面那条更粗的深色描边，露出来的一圈就是蕾丝边",
+        default=True,
+        update=_apply_visibility,
+    )
+
     show_tiling: bpy.props.BoolProperty(  # type: ignore[valid-type]
         name="瓷砖分界线",
         description="去重后的瓷砖边网络（每条分界线只画一次）",
@@ -244,9 +256,9 @@ class GenZellijSettings(bpy.types.PropertyGroup):
 
     interlace_radius: bpy.props.FloatProperty(  # type: ignore[valid-type]
         name="编织带宽",
-        description="编织带子的笔划半径（总宽 = 2×半径）；缺口按带宽算，属于几何，"
-        "改它必须重新生成。画布 10 时 0.018 左右大致是绢白勾缝的粗细",
-        default=0.018,
+        description="编织带子的笔划半径（总宽 = 2×半径，含描边则是 2×描边宽）；"
+        "缺口按带宽算，属于几何，改它必须重新生成。画布 10 时 0.010 左右是绢白勾缝",
+        default=0.010,
         min=0.0,
         precision=4,
         subtype="DISTANCE",
@@ -256,12 +268,35 @@ class GenZellijSettings(bpy.types.PropertyGroup):
 
     interlace_gap: bpy.props.FloatProperty(  # type: ignore[valid-type]
         name="编织间隙",
-        description="缺口在“刚好贴住上方带子”之外再多留的量，单位是带宽的倍数；"
-        "0 = 压下的带子正好顶到上方带子的边，越大缝越明显",
-        default=0.25,
+        description="缺口在「刚好贴住上方带子」之外再多留的量，单位是半宽的倍数；"
+        "0 = 压下的带子正好顶到上方带子的边（编织的默认形态），越大缝越明显",
+        default=0.0,
         min=0.0,
         soft_max=2.0,
         precision=2,
+        update=_mark_dirty,
+    )
+
+    interlace_casing: bpy.props.FloatProperty(  # type: ignore[valid-type]
+        name="编织描边宽",
+        description="描边的笔划半径，必须比「编织带宽」大才露得出来（差多少就是边的粗细）；"
+        "它同时决定缺口要让开多少，改它也要重新生成",
+        default=0.0125,
+        min=0.0,
+        precision=4,
+        subtype="DISTANCE",
+        unit="LENGTH",
+        update=_mark_dirty,
+    )
+
+    interlace_case_color: bpy.props.FloatVectorProperty(  # type: ignore[valid-type]
+        name="描边色",
+        description="编织描边的颜色（默认墨玄，给绢白带子勾一圈细边）",
+        size=3,
+        subtype="COLOR_GAMMA",
+        default=HEX_INK,
+        min=0.0,
+        max=1.0,
         update=_mark_dirty,
     )
 
@@ -382,26 +417,29 @@ class GenZellijSettings(bpy.types.PropertyGroup):
         return {
             LAYER_FILLS: 0.0,
             LAYER_OUTLINES: float(self.outline_radius),
+            LAYER_INTERLACE_CASE: float(self.interlace_casing),
             LAYER_INTERLACE: float(self.interlace_radius),
             LAYER_TILING: float(self.tiling_radius),
             LAYER_LINES: float(self.line_radius),
         }
 
     def layer_colors(self) -> dict:
-        """面板可覆盖的描边色：编织层与两个调试图层。"""
+        """面板可覆盖的描边色：编织两层与两个调试图层。"""
         return {
+            LAYER_INTERLACE_CASE: tuple(self.interlace_case_color),
             LAYER_INTERLACE: tuple(self.interlace_color),
             LAYER_TILING: tuple(self.tiling_color),
             LAYER_LINES: tuple(self.line_color),
         }
 
     def weave_style(self):
-        """编织的几何参数（带宽进几何，见 ``scene.build_layers``）。"""
+        """编织的几何参数（带宽与描边宽都进几何，见 ``scene.build_layers``）。"""
         from .scene import WeaveStyle
 
         return WeaveStyle(
             half_width=float(self.interlace_radius),
             gap_ratio=float(self.interlace_gap),
+            casing=float(self.interlace_casing),
         )
 
 

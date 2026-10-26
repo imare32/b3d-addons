@@ -73,6 +73,12 @@ _ATTR_FILL_COLOR = "fill_color"
 _ATTR_FILL_ID = "fill_id"
 _ATTR_HIDE_STROKE = "hide_stroke"
 _ATTR_MITER_ANGLE = "miter_angle"
+#: 端头：**CURVE 域 INT8**，0 = 圆头，1 = 平头（实测 ``caps_set`` 就是写这两个属性）。
+#: 界面里的 ``bpy.ops.grease_pencil.caps_set(type='FLAT')`` 等价于逐条写 1。
+_ATTR_START_CAP = "start_cap"
+_ATTR_END_CAP = "end_cap"
+CAP_ROUND = 0
+CAP_FLAT = 1
 
 
 # --- 对象 -----------------------------------------------------------------
@@ -161,6 +167,16 @@ def _set_points(drawing, name, dtype, key, values, default) -> None:
     attribute.data.foreach_set(key, values)
 
 
+def _set_curves(drawing, name, dtype, key, values, default) -> None:
+    """逐**笔划**写一条属性（``fill_id`` / 端头这类 CURVE 域的东西）。"""
+    attribute = drawing.attributes.get(name)
+    if attribute is None:
+        attribute = drawing.attributes.new(name, dtype, "CURVE")
+        packed = list(default) if isinstance(default, (tuple, list)) else [default]
+        attribute.data.foreach_set(key, packed * len(values))
+    attribute.data.foreach_set(key, values)
+
+
 def _write_drawing(drawing, shapes, *, width: float, hide_stroke: bool = False) -> None:
     total = sum(len(shape.points) for shape in shapes)
     drawing.add_strokes([len(shape.points) for shape in shapes])
@@ -228,6 +244,25 @@ def _write_drawing(drawing, shapes, *, width: float, hide_stroke: bool = False) 
         hide_attr = drawing.attributes.new(_ATTR_HIDE_STROKE, "BOOLEAN", "CURVE")
     hide_attr.data.foreach_set("value", [bool(hide_stroke)] * len(shapes))
 
+    # 端头：默认圆头，属性不存在就等价于全 0；只有真的混着平头时才写
+    if any(start or end for start, end in (shape.caps for shape in shapes)):
+        _set_curves(
+            drawing,
+            _ATTR_START_CAP,
+            "INT8",
+            "value",
+            [CAP_FLAT if shape.caps[0] else CAP_ROUND for shape in shapes],
+            CAP_ROUND,
+        )
+        _set_curves(
+            drawing,
+            _ATTR_END_CAP,
+            "INT8",
+            "value",
+            [CAP_FLAT if shape.caps[1] else CAP_ROUND for shape in shapes],
+            CAP_ROUND,
+        )
+
     strokes = drawing.strokes
     for index, shape in enumerate(shapes):
         strokes[index].cyclic = bool(shape.closed)
@@ -253,6 +288,9 @@ def build_object(
 
     ``hide_stroke_layers`` 里的图层只留填充/几何、不画描边 —— 填充层（``Fills``）
     就是这么用的，它的描边在独立的 ``Outlines`` 层。
+
+    ``Shape.caps`` 给出平头端头（GP 的 ``start_cap`` / ``end_cap``，CURVE 域 INT8，
+    1 = 平头）；整层都没有平头时不建这两个属性。
 
     图层严格按 ``Shape`` 首次出现的顺序创建，不做重排：``data.layers`` 里
     索引越大越靠上，所以**列表里靠后的图层盖住靠前的**。
