@@ -5,5 +5,5 @@
   "blender.addon.extensionsRepository": "b3d_addons",
 
   // 要加载的扩展目录（相对工作区根）。加了新扩展就补一行。
-  "blender.addonFolders": ["./gen_zellij"]
+  "blender.addonFolders": ["./gen_zellij", "./gen_rosette"]
 }

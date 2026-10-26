@@ -263,6 +263,7 @@ blender --command extension build --source-dir "C:\git\b3d-addons\<ext_id>" --ou
 | 扩展 id | 名称 | 用途 | 状态 | 依赖 / 权限 | 快捷键 |
 |---|---|---|---|---|---|
 | [`gen_zellij`](gen_zellij/README.md) | Gen Zellij | 生成式伊斯兰几何镶嵌（zellij），渲染为分层 Grease Pencil v3 | 可用（5.2.2 实测） | 无外部依赖（图案库随包） | — |
+| [`gen_rosette`](gen_rosette/README.md) | Gen Rosette | 生成式星形玫瑰线，编成上下交替的蕾丝带，渲染为分层 Grease Pencil v3 | 可用（5.2.2 实测） | 无外部依赖 | — |
 | `<ext_id_b>` | — | — | 规划中 | — | — |
 
 新增一个扩展的最小步骤：
@@ -317,8 +318,8 @@ BACKGROUND = "#E4D9D0"
 - 画布底色只有一个 `BACKGROUND`；插件需要"白"时用 `SILK`，不要另写纯白。
 
 色板落在 [`_shared/palette.py`](_shared/palette.py)（含 `hex_to_linear()` / `srgb_to_linear()`）。
-Blender 扩展必须自包含，所以 `gen_zellij/palette.py` 是它的**逐字副本**（随 zip 打包）：
-改色时两处一起改，`Get-FileHash` 比对即可确认同步。
+Blender 扩展必须自包含，所以 `gen_zellij/palette.py` 与 `gen_rosette/palette.py` 都是它的
+**逐字副本**（随各自的 zip 打包）：改色时三处一起改，`Get-FileHash` 比对即可确认同步。
 
 ## 快捷键速查
 
