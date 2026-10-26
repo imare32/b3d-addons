@@ -1,0 +1,23 @@
+schema_version = "1.0.0"
+
+id = "gen_zellij"
+version = "0.1.0"
+name = "Gen Zellij"
+tagline = "Generative zellij patterns as layered Grease Pencil drawings"
+maintainer = "imare32"
+type = "add-on"
+
+tags = ["Grease Pencil", "Object"]
+
+# GP v3 的 fill_id / fill_color 属性在 5.x 上实测通过；4.x 未验证，故设 5.0 起。
+blender_version_min = "5.0.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+[build]
+paths_exclude_pattern = [
+    "__pycache__/",
+    "/.git/",
+    "/.temp/",
+    "/*.zip",
+]

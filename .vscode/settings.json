@@ -1,0 +1,9 @@
+{
+  // 本仓库按「方式 A」注册为本地扩展仓库（id = b3d_addons），模块名因此是
+  // bl_ext.b3d_addons.<ext_id>。Blender Development 扩展默认按 vscode_development
+  // 拼模块名，不改这一项就会报 ModuleNotFoundError: bl_ext.vscode_development.<ext_id>。
+  "blender.addon.extensionsRepository": "b3d_addons",
+
+  // 要加载的扩展目录（相对工作区根）。加了新扩展就补一行。
+  "blender.addonFolders": ["./gen_zellij"]
+}
