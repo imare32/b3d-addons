@@ -31,8 +31,9 @@ __all__ = ["Point", "Weave", "WeaveStyle", "build_weave"]
 
 Point = tuple[float, float]
 
-#: 端点量化位数：世界单位下约 1e-4，与 ``scene`` 的边去重、``_dedupe`` 同一量级。
-DIGITS = 4
+#: 端点聚类的默认容差 = 图形包围盒跨度 × 该比例（画布 10 时约 0.0017，是色块最短边
+#: 0.06 的 3%）。实测同一段缝的两份坐标差在 1e-6~1e-3，量化去重会漏掉一半。
+SNAP_RATIO = 2e-4
 
 #: 交叉角正弦的下限：8 方向网格里最小是 45°（0.707），留一点余量给退化情况，
 #: 免得 ``1/sin`` 把缺口放大到吃掉整条带子。
@@ -54,9 +55,11 @@ class WeaveStyle:
     """编织的外观参数（都是世界单位 / 无量纲比率）。"""
 
     #: 带子半宽（= 笔划半径，总宽 = 2×）。
-    half_width: float = 0.025
+    half_width: float = 0.018
     #: 缺口在"刚好贴住上方带子"之外再多留的量，单位是**带宽**（half_width 的倍数）。
     gap_ratio: float = 0.25
+    #: 端点聚类容差（世界单位）；0 = 按包围盒自动取 ``SNAP_RATIO``。
+    snap: float = 0.0
 
 
 @dataclass(slots=True)
@@ -103,37 +106,199 @@ def _dist(a: Point, b: Point) -> float:
 # --- 图 --------------------------------------------------------------------
 
 
-def _edge_network(polygons):
-    """色块多边形 → 去重后的无向边网（共享边只留一条）。"""
-    index: dict[tuple[float, float], int] = {}
+def _cells(a: Point, b: Point, cell: float, margin: float = 0.0):
+    """线段包围盒覆盖的栅格单元（``margin`` 给容差留一圈）。"""
+    lo_x, hi_x = (a[0], b[0]) if a[0] <= b[0] else (b[0], a[0])
+    lo_y, hi_y = (a[1], b[1]) if a[1] <= b[1] else (b[1], a[1])
+    for cx in range(int((lo_x - margin) // cell), int((hi_x + margin) // cell) + 1):
+        for cy in range(int((lo_y - margin) // cell), int((hi_y + margin) // cell) + 1):
+            yield (cx, cy)
+
+
+def _nodes_on_edge(points, node_grid, cell, snap, a, b):
+    """落在边 ``(a, b)`` 内部的结点：``[(t, node), ...]``，按 ``t`` 升序。
+
+    这一条同时吃掉三类毛病：近似重合的两份端点、共线部分重叠的长短边、T 型结点。
+    """
+    ax, ay = points[a]
+    bx, by = points[b]
+    ex, ey = bx - ax, by - ay
+    length2 = ex * ex + ey * ey
+    if length2 <= 1e-18:
+        return []
+    hits = []
+    for key in _cells(points[a], points[b], cell, snap):
+        for index in node_grid.get(key, ()):
+            if index == a or index == b:
+                continue
+            dx = points[index][0] - ax
+            dy = points[index][1] - ay
+            t = (dx * ex + dy * ey) / length2
+            if t <= 0.0 or t >= 1.0:
+                continue
+            if (dx - ex * t) ** 2 + (dy - ey * t) ** 2 > snap * snap:
+                continue
+            hits.append((t, index))
+    hits.sort()
+    return hits
+
+
+def _crossing(points, first, second, snap):
+    """两段**内部**相交：返回 ``(t, u, point)``，平行/不相交返回 ``None``。"""
+    (ax, ay), (bx, by) = points[first[0]], points[first[1]]
+    (cx, cy), (dx, dy) = points[second[0]], points[second[1]]
+    rx, ry = bx - ax, by - ay
+    sx, sy = dx - cx, dy - cy
+    denominator = rx * sy - ry * sx
+    length = math.hypot(rx, ry) * math.hypot(sx, sy)
+    if length <= 1e-18 or abs(denominator) <= 1e-9 * length:
+        return None  # 平行（含共线，共线交给"落在边内部的结点"处理）
+    t = ((cx - ax) * sy - (cy - ay) * sx) / denominator
+    u = ((cx - ax) * ry - (cy - ay) * rx) / denominator
+    # 端点附近交给结点聚类，不在这里插点
+    slack = min(0.25, max(snap / max(math.hypot(rx, ry), 1e-12), 1e-6))
+    if not (slack < t < 1.0 - slack and slack < u < 1.0 - slack):
+        return None
+    return t, u, (ax + rx * t, ay + ry * t)
+
+
+def _split_edge(points, a, b, breaks):
+    """把边 ``(a, b)`` 在内部断点处打断，返回若干条规范化的边。"""
+    if not breaks:
+        return [(a, b) if a < b else (b, a)]
+    ax, ay = points[a]
+    bx, by = points[b]
+    ex, ey = bx - ax, by - ay
+    length2 = ex * ex + ey * ey
+    if length2 <= 1e-18:
+        return []
+    ordered = []
+    seen = set()
+    for _t, index in sorted(breaks):
+        if index == a or index == b or index in seen:
+            continue
+        if (points[index][0] - ax) * ex + (points[index][1] - ay) * ey <= 0.0:
+            continue
+        if (points[index][0] - bx) * -ex + (points[index][1] - by) * -ey <= 0.0:
+            continue
+        seen.add(index)
+        ordered.append(index)
+    out = []
+    previous = a
+    for index in ordered:
+        out.append((previous, index) if previous < index else (index, previous))
+        previous = index
+    if previous != b:
+        out.append((previous, b) if previous < b else (b, previous))
+    return out
+
+
+def _edge_network(polygons, snap: float = 0.0):
+    """色块多边形 → **平面化**后的无向边网。
+
+    量化去重不够用。相邻色块的共用缝是由各自的仿射变换摆出来的，同一段缝的两份坐标
+    只差 ``1e-6``~``1e-3``；4 位量化有一半正好落在桶边界上，于是同一段缝留下两条边
+    （实测 density 10：7843 条边里有 3971 条是这种"两份"）。除此之外还有共线部分重叠
+    （797 处）、T 型结点（2252 处），以及两边内部真交叉但没有结点（593 处）。
+
+    所以这里做三件事，顺序不能换：
+
+    1. **端点容差聚类**：``snap`` 半径内归成同一个结点（栅格 + 邻域查询，不做跨桶量化）；
+    2. **平面化**：每条边在"落在它内部的结点"处打断——重合、部分重叠、T 型一次消掉；
+    3. **交点入库**：两条非共线边内部相交时插入结点并同时打断两边，否则那里根本
+       没有结点，也就无从编织。
+    """
+    flat = [(x, y) for polygon in polygons for x, y in polygon]
+    if not flat:
+        return [], []
+    xs = [point[0] for point in flat]
+    ys = [point[1] for point in flat]
+    span = max(max(xs) - min(xs), max(ys) - min(ys))
+    if snap <= 0.0:
+        snap = max(span * SNAP_RATIO, 1e-9)
+    cell = max(snap * 8.0, span / 128.0)
+    snap2 = snap * snap
+
     points: list[Point] = []
-    edges: list[tuple[int, int]] = []
+    grid: dict[tuple[int, int], list[int]] = {}
+
+    def node_of(x, y) -> int:
+        cx, cy = int(x // cell), int(y // cell)
+        best, best_d = -1, snap2
+        for ax in (cx - 1, cx, cx + 1):
+            for ay in (cy - 1, cy, cy + 1):
+                for index in grid.get((ax, ay), ()):
+                    dx = points[index][0] - x
+                    dy = points[index][1] - y
+                    distance = dx * dx + dy * dy
+                    if distance <= best_d:
+                        best, best_d = index, distance
+        if best < 0:
+            best = len(points)
+            points.append((x, y))
+            grid.setdefault((cx, cy), []).append(best)
+        return best
+
     seen: set[tuple[int, int]] = set()
-
-    def node(point) -> int:
-        key = (round(point[0], DIGITS), round(point[1], DIGITS))
-        found = index.get(key)
-        if found is None:
-            found = len(points)
-            index[key] = found
-            points.append(key)
-        return found
-
+    raw: list[tuple[int, int]] = []
     for polygon in polygons:
         count = len(polygon)
         if count < 3:
             continue
-        ids = [node(point) for point in polygon]
+        ids = [node_of(x, y) for x, y in polygon]
         for i in range(count):
             a = ids[i]
             b = ids[(i + 1) % count]
             if a == b:
                 continue
             key = (a, b) if a < b else (b, a)
-            if key in seen:
+            if key not in seen:
+                seen.add(key)
+                raw.append(key)
+
+    breaks: list[list[tuple[float, int]]] = [[] for _ in raw]
+
+    # 交点：同一栅格单元里的两条边互相试一下（长边会跨多个单元，用集合去重）
+    edge_grid: dict[tuple[int, int], list[int]] = {}
+    for eid, (a, b) in enumerate(raw):
+        for key in _cells(points[a], points[b], cell):
+            edge_grid.setdefault(key, []).append(eid)
+
+    tested: set[tuple[int, int]] = set()
+    for bucket in edge_grid.values():
+        count = len(bucket)
+        for i in range(count):
+            for j in range(i + 1, count):
+                one, two = bucket[i], bucket[j]
+                if one > two:
+                    one, two = two, one
+                pair = (one, two)
+                if pair in tested:
+                    continue
+                tested.add(pair)
+                hit = _crossing(points, raw[one], raw[two], snap)
+                if hit is None:
+                    continue
+                t, u, point = hit
+                index = node_of(point[0], point[1])
+                breaks[one].append((t, index))
+                breaks[two].append((u, index))
+
+    # 结点栅格（含刚插入的交点）→ 每条边的内部断点：近似重合、共线重叠、T 型
+    node_grid: dict[tuple[int, int], list[int]] = {}
+    for index, (x, y) in enumerate(points):
+        node_grid.setdefault((int(x // cell), int(y // cell)), []).append(index)
+    for eid, (a, b) in enumerate(raw):
+        breaks[eid].extend(_nodes_on_edge(points, node_grid, cell, snap, a, b))
+
+    edges: list[tuple[int, int]] = []
+    pieces: set[tuple[int, int]] = set()
+    for eid, (a, b) in enumerate(raw):
+        for piece in _split_edge(points, a, b, breaks[eid]):
+            if piece in pieces:
                 continue
-            seen.add(key)
-            edges.append(key)
+            pieces.add(piece)
+            edges.append(piece)
     return points, edges
 
 
@@ -315,7 +480,7 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
     radius = max(0.0, float(style.half_width))
     gap = max(0.0, float(style.gap_ratio)) * radius
 
-    points, edges = _edge_network(polygons)
+    points, edges = _edge_network(polygons, style.snap)
     result = Weave(nodes=len(points), edges=len(edges))
     if not edges:
         return result
