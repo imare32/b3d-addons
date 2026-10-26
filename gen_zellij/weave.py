@@ -449,7 +449,16 @@ def _at(points, cum, where: float) -> Point:
 
 
 def _slice(points, cum, start: float, end: float) -> list[Point]:
-    """取 ``[start, end]`` 这段弧长对应的折线（端点插值，中间节点原样保留）。"""
+    """取 ``[start, end]`` 这段弧长对应的折线（端点插值，中间节点原样保留）。
+
+    闭合带子跨接缝的那一段会把首尾两段接起来，``end`` 因此会超过总长——这里必须真的
+    绕回去接着走，不能拿 ``_at`` 钳到末点（那样后半截整段丢掉，只剩两条圆头残段）。
+    """
+    total = cum[-1]
+    if end > total:
+        head = _slice(points, cum, start, total)
+        tail = _slice(points, cum, 0.0, end - total)
+        return head + tail[1:]
     out = [_at(points, cum, start)]
     for i in range(1, len(points) - 1):
         if start < cum[i] < end:
@@ -858,13 +867,15 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
             if unbroken:
                 piece = raw
             else:
-                piece = _slice(ring, cum, max(0.0, start), min(total, end))
+                # end 可以超过总长（闭合带子跨接缝的那一段），_slice 负责绕回去
+                piece = _slice(ring, cum, max(0.0, start), end)
                 if len(piece) < 2:
                     continue
             piece_id = len(paths)
             flat_start = flat_end = False
+            wrapped_end = end - total if end > total else end
             for cut in cuts:
-                if abs(min(max(cut[0], 0.0), total) - end) < 1e-9:
+                if abs(min(max(cut[0], 0.0), total) - wrapped_end) < 1e-9:
                     flat_end = cut[3]  # 这一段结束在切口的"进侧"上
                 elif abs(min(max(cut[1], 0.0), total) - start) < 1e-9:
                     flat_start = cut[4]  # 这一段从切口的"出侧"起步
@@ -872,7 +883,7 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
             caps_out.append((flat_start, flat_end))
             emitted.append((start, end, piece_id))
             # 端头正好落在交叉点上 ⇒ 这一段是"压在下面"的
-            for where, at_end in ((start, True), (end, False)):
+            for where, at_end in ((start, True), (wrapped_end, False)):
                 for cut in cuts:
                     value = cut[1] if at_end else cut[0]
                     if abs(min(max(value, 0.0), total) - where) < 1e-9:
@@ -890,7 +901,10 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
                 continue
             where = cum[i]
             for start, end, piece_id in emitted:
-                if start - 1e-9 <= where <= end + 1e-9:
+                if (
+                    start - 1e-9 <= where <= end + 1e-9
+                    or where + total <= end + 1e-9  # 跨接缝那一段的后半截
+                ):
                     piece_links.append((node_id, piece_id, False))
                     break
 
