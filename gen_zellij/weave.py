@@ -576,7 +576,7 @@ def _clip_halfplane(polygon, normal, offset):
     return out
 
 
-def _tip_patch(here, towards, cut, half_width, clear, axes):
+def _tip_patch(here, towards, cut, half_width, clear, planes):
     """切口端头那块"多边形边"：把本体沿**对方带子的边缘**裁齐。
 
     笔划的端头只能垂直于自己，而对方边缘是斜的——斜交叉上两者必然错开：要么退到远处
@@ -585,29 +585,34 @@ def _tip_patch(here, towards, cut, half_width, clear, axes):
 
     ``here`` 交叉点，``towards`` 从交叉点指向**本体材料内部**的单位向量，``cut`` 该端
     的切口距离（沿 ``towards`` 量），``clear`` 要留出的距离（可见半宽 + 间隙），
-    ``axes`` 这个交叉点上其它通过段的方向（要被让开的那几根带子）。返回世界坐标的凸
-    多边形；缺口可以忽略时返回 ``None``。
+    ``planes`` 要躲开的半平面（世界坐标 ``(单位法线, 偏移)``，``p·法线 >= 偏移`` 是保留
+    侧，调用方已按补片那一侧取好方向）。返回世界坐标的凸多边形；缺口可以忽略时返回
+    ``None``。
+
+    补片沿 ``towards`` 从交叉点伸到 ``cut + half_width``——最后那半个带宽只是为了让补片
+    和笔划端头**叠住**、不留缝，没有几何意义；所以它会不会戳到别的带子身上，全靠
+    ``planes`` 兜住（见 :func:`build_weave` 里"附近带子"那段）。
     """
-    if half_width <= 0.0 or clear <= 0.0 or not axes:
+    if half_width <= 0.0 or clear <= 0.0:
         return None
     normal = (-towards[1], towards[0])
-    far = cut + half_width  # 往材料那边多伸半个带宽，与笔划端头叠住，免得留缝
+    far = cut + half_width
     polygon = [
         (0.0, -half_width),
         (far, -half_width),
         (far, half_width),
         (0.0, half_width),
     ]
-    for axis in axes:
-        side = (-axis[1], axis[0])
-        # 往本体这一侧取法线，约束就只剩一条半平面：(p - here)·side >= clear
-        if towards[0] * side[0] + towards[1] * side[1] < 0.0:
-            side = (-side[0], -side[1])
-        normal_local = (
-            towards[0] * side[0] + towards[1] * side[1],
-            normal[0] * side[0] + normal[1] * side[1],
+    origin_x, origin_y = here
+    for (plane_x, plane_y), offset in planes:
+        # 局部坐标是相对交叉点的，平面偏移要跟着搬一次原点
+        local = (
+            towards[0] * plane_x + towards[1] * plane_y,
+            normal[0] * plane_x + normal[1] * plane_y,
         )
-        polygon = _clip_halfplane(polygon, normal_local, clear)
+        polygon = _clip_halfplane(
+            polygon, local, offset - (origin_x * plane_x + origin_y * plane_y)
+        )
         if len(polygon) < 3:
             return None
     if min(point[0] for point in polygon) > cut - TIP_MIN * clear:
@@ -616,6 +621,26 @@ def _tip_patch(here, towards, cut, half_width, clear, axes):
         (here[0] + s * towards[0] + q * normal[0], here[1] + s * towards[1] + q * normal[1])
         for s, q in polygon
     ]
+
+
+def _own_band(segment, here, towards, half_width) -> bool:
+    """这条线段是不是补片自己那根带子的中心线。
+
+    它不能当裁剪平面用——补片本来就骑在这条带上；判据是"方向跟本段差不多、中心线又
+    落在本段宽度里"。同一条带子上**平行**的邻段（包括穿过交叉点的那一段）都会被认出来。
+    """
+    (ax, ay), (bx, by) = segment
+    dx = bx - ax
+    dy = by - ay
+    length = math.hypot(dx, dy)
+    if length <= 1e-12:
+        return True
+    if abs((dx * towards[0] + dy * towards[1]) / length) < 0.96:
+        return False  # 方向差超过约 16°，是另一根带子
+    mid_x = (ax + bx) * 0.5 - here[0]
+    mid_y = (ay + by) * 0.5 - here[1]
+    across = -mid_x * towards[1] + mid_y * towards[0]
+    return abs(across) <= 0.6 * half_width
 
 
 # --- 主流程 ----------------------------------------------------------------
@@ -753,9 +778,6 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
     # 描边层**不切口**：它是最深的一层、颜色又只有一种，对方的本体压在它上面、对方的
     # 描边与它同色——切与不切一个像素都不差。真正必须停下来的只有本体（浅色），它停在
     # 对方 footprint 之外，缺口由 _tip_patch 补齐。所以这里只有一套切口。
-    # 描边层**不切口**：它是最深的一层、颜色又只有一种，对方的本体压在它上面、对方的
-    # 描边与它同色——切与不切一个像素都不差。真正必须停下来的只有本体（浅色），它停在
-    # 对方 footprint 之外，缺口由 _tip_patch 补齐。所以这里只有一套切口。
     cut_body = bool(tuck) and 0.0 < radius < reach
     if cut_body:
         result.paths.extend(
@@ -768,6 +790,25 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
     else:
         paths = result.paths
         caps_out = result.caps
+
+    # 补片是**浅色**、又画在整层描边之上：它戳进任何一根带子的描边环里，都是一道浅色
+    # 缺口。所以除了本结点的通过段，附近带子的外侧也要当裁剪平面——先把所有带子的
+    # 中心线段装进栅格，补片按包围盒去查。
+    band_gap = reach + gap
+    band_cell = max(2.0 * band_gap, 0.02)
+    band_cells: dict[tuple[int, int], list] = {}
+    if cut_body:
+        for band_points, _closed in result.paths:
+            for segment in zip(band_points, band_points[1:]):
+                (ax, ay), (bx, by) = segment
+                for cell_x in range(
+                    math.floor(min(ax, bx) / band_cell), math.floor(max(ax, bx) / band_cell) + 1
+                ):
+                    for cell_y in range(
+                        math.floor(min(ay, by) / band_cell),
+                        math.floor(max(ay, by) / band_cell) + 1,
+                    ):
+                        band_cells.setdefault((cell_x, cell_y), []).append(segment)
 
     for strand in strands:
         nodes = strand["nodes"]
@@ -814,14 +855,70 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
                     for other in crossings[node_id]
                     if other != pid
                 ]
-                for towards, d_end, flat in (
-                    (_sub(points[prev_node], here), d_in, flat_in),
-                    (_sub(points[next_node], here), d_out, flat_out),
+                # 补片伸到 far = 切口距离 + 半宽；只有它比"到相邻结点的距离"还长时，
+                # 才可能顶到隔壁那根带子身上——格子内部没有别的带子，所以这时才去查
+                # 周围（不然白花时间，实测 density 24 要慢六成）。
+                prev_arc = cum[i - 1] if i > 0 else cum[count - 1] - total
+                next_arc = cum[i + 1] if i + 1 < len(cum) else cum[1] + total
+                for towards, d_end, flat, room in (
+                    (_sub(points[prev_node], here), d_in, flat_in, cum[i] - prev_arc),
+                    (_sub(points[next_node], here), d_out, flat_out, next_arc - cum[i]),
                 ):
                     if not flat:
                         continue
+                    direction = _norm(towards)
+                    far_point = (
+                        here[0] + direction[0] * d_end,
+                        here[1] + direction[1] * d_end,
+                    )
+                    planes: list[tuple[tuple[float, float], float]] = []
+                    seen_planes: set[tuple[float, float, float]] = set()
+
+                    def add_plane(normal_x, normal_y, anchor_x, anchor_y):
+                        """保留侧是补片那一边，偏移 = 锚点在该法线上的投影 + 让开距离。"""
+                        if (far_point[0] - anchor_x) * normal_x + (
+                            far_point[1] - anchor_y
+                        ) * normal_y < 0.0:
+                            normal_x, normal_y = -normal_x, -normal_y
+                        offset = anchor_x * normal_x + anchor_y * normal_y + band_gap
+                        plane_key = (
+                            round(normal_x, 5),
+                            round(normal_y, 5),
+                            round(offset, 5),
+                        )
+                        if plane_key not in seen_planes:
+                            seen_planes.add(plane_key)
+                            planes.append(((normal_x, normal_y), offset))
+
+                    for axis in axes:
+                        add_plane(-axis[1], axis[0], here[0], here[1])
+                    if d_end + radius + band_gap > room:
+                        # 补片会伸到隔壁结点附近，那里还有别的带子：包围盒按
+                        # "补片半宽 + 可见半宽 + 间隙"放一圈，把它们的中心线也当裁剪平面
+                        pad = radius + band_gap
+                        low_x = min(here[0], far_point[0]) - pad
+                        high_x = max(here[0], far_point[0]) + pad
+                        low_y = min(here[1], far_point[1]) - pad
+                        high_y = max(here[1], far_point[1]) + pad
+                        for cell_x in range(
+                            math.floor(low_x / band_cell), math.floor(high_x / band_cell) + 1
+                        ):
+                            for cell_y in range(
+                                math.floor(low_y / band_cell),
+                                math.floor(high_y / band_cell) + 1,
+                            ):
+                                for segment in band_cells.get((cell_x, cell_y), ()):
+                                    if _own_band(segment, here, direction, radius):
+                                        continue
+                                    (ax, ay), (bx, by) = segment
+                                    span_x = bx - ax
+                                    span_y = by - ay
+                                    length = math.hypot(span_x, span_y)
+                                    if length <= 1e-12:
+                                        continue
+                                    add_plane(-span_y / length, span_x / length, ax, ay)
                     patch = _tip_patch(
-                        here, _norm(towards), d_end, radius, reach + gap, axes
+                        here, direction, d_end, radius, band_gap, planes
                     )
                     if patch is not None:
                         result.tips.append(patch)
