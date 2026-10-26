@@ -248,7 +248,8 @@ print([m for m in bpy.context.preferences.addons.keys() if m.startswith("bl_ext.
 # 校验单个扩展的清单与文件完整性（路径可为目录或 zip）
 blender --command extension validate "C:\git\b3d-addons\<ext_id>"
 
-# 打包为可分发 zip（产物默认 <id>-<version>.zip）
+# 打包为可分发 zip（产物默认 <id>-<version>.zip；--output-dir 不会自建目录，先建出来）
+New-Item -ItemType Directory -Force "C:\git\b3d-addons\dist" | Out-Null
 blender --command extension build --source-dir "C:\git\b3d-addons\<ext_id>" --output-dir "C:\git\b3d-addons\dist"
 ```
 
