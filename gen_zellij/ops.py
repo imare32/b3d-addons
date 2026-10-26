@@ -12,7 +12,7 @@ from . import gp, viewport
 from .palette import BACKGROUND, hex_to_linear
 from .props import DESIGN_KEYS, LAYER_VISIBILITY
 from .rng import SEED_MAX
-from .scene import LAYER_FILLS, LAYER_LINES
+from .scene import LAYER_FILLS, LAYER_INTERLACE, LAYER_INTERLACE_CASE, LAYER_LINES
 
 __all__ = [
     "GENZ_OT_delete",
@@ -185,6 +185,9 @@ class GENZ_OT_generate(bpy.types.Operator):
                 dash_layer=LAYER_LINES,
                 # 填充层只填不描边：描边在 Outlines 层，两者共用同一套几何
                 hide_stroke_layers={LAYER_FILLS},
+                # 编织两层用圆角连接（不写 miter_angle）：90° 转弯处是四分圆弧，
+                # 和端头圆角一个观感；线稿层保持斜接，尖角才立得起来
+                round_join_layers={LAYER_INTERLACE, LAYER_INTERLACE_CASE},
                 collection=context.collection,
             )
             obj = gp.find_object()

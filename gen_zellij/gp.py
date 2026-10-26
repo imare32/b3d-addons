@@ -14,8 +14,10 @@
 * **``layer.use_lights`` 新建时默认 ``True``**（实测），着色层在没有灯的情况下
   只拿到 ``World.color`` 的环境光，实测纯红填充渲染成 0.247 而不是 1.0。
   本后端一律建 **无光照层**（``use_lights = False``），颜色所见即所得；
-* 尖角：所有点写 ``miter_angle``（取算子下限 1°）。缺属性 / 0 都等同圆角，
-  默认 π/4 会把所有 < 45° 的角切平，zellij 的密集尖角会被削掉；
+* 拐角：**写不写** ``miter_angle``（POINT，FLOAT，弧度）决定连接方式——写 = 斜接
+  （值是最小夹角，小于它的角被切平；取算子下限 1°），不写 = 圆角连接。线稿层用斜接
+  （尖角立得住），编织两层用圆角（90° 转弯是四分圆弧，和端头圆角一个观感、内侧不叠画）。
+  界面里的 ``grease_pencil.set_corner_type(corner_type='ROUND')`` 就是把这个属性删掉；
 * 虚线靠 **Dot Dash** 修改器（``GREASE_PENCIL_DASH``）：它的
   ``segments[0].dash`` / ``gap`` 是**采样点数**（实测 dash=2 / gap=2 得到
   严格的 2 点画、2 点空），所以构造线必须等弧长采样，疏密才不随线长变化；
@@ -177,7 +179,9 @@ def _set_curves(drawing, name, dtype, key, values, default) -> None:
     attribute.data.foreach_set(key, values)
 
 
-def _write_drawing(drawing, shapes, *, width: float, hide_stroke: bool = False) -> None:
+def _write_drawing(
+    drawing, shapes, *, width: float, hide_stroke: bool = False, miter: bool = True
+) -> None:
     total = sum(len(shape.points) for shape in shapes)
     drawing.add_strokes([len(shape.points) for shape in shapes])
 
@@ -201,14 +205,17 @@ def _write_drawing(drawing, shapes, *, width: float, hide_stroke: bool = False) 
 
     _set_points(drawing, _ATTR_RADIUS, "FLOAT", "value", [width] * total, width)
     _set_points(drawing, _ATTR_OPACITY, "FLOAT", "value", [1.0] * total, 1.0)
-    _set_points(
-        drawing,
-        _ATTR_MITER_ANGLE,
-        "FLOAT",
-        "value",
-        [MITER_ANGLE] * total,
-        MITER_ANGLE,
-    )
+    if miter:
+        # 有这条属性 = **斜接**拐角（值是最小夹角，小于它的角会被切平）；
+        # 没有它 = **圆角连接**（外角是个四分圆弧、内角不叠画）。见模块文档。
+        _set_points(
+            drawing,
+            _ATTR_MITER_ANGLE,
+            "FLOAT",
+            "value",
+            [MITER_ANGLE] * total,
+            MITER_ANGLE,
+        )
     _set_points(
         drawing,
         _ATTR_VERTEX_COLOR,
@@ -289,6 +296,7 @@ def build_object(
     dash_layer: str | None = None,
     dash: tuple[int, int] = DASH_PATTERN,
     hide_stroke_layers: set[str] | None = None,
+    round_join_layers: set[str] | None = None,
     collection=None,
 ) -> dict:
     """把 ``Shape`` 列表写进固定 GP 对象，按 ``Shape.layer`` 分组建图层。
@@ -300,6 +308,10 @@ def build_object(
     ``hide_stroke_layers`` 里的图层只留填充/几何、不画描边 —— 填充层（``Fills``）
     就是这么用的，它的描边在独立的 ``Outlines`` 层。
 
+    ``round_join_layers`` 里的图层**不写** ``miter_angle``：缺这条属性时 GP 用圆角连接，
+    和"端头圆角"是一个观感；编织的两层就该这样（90° 转弯处是四分圆弧，内侧也不叠画）。
+    其余图层照旧写 1°（斜接），线稿的尖角才立得起来。
+
     ``Shape.caps`` 给出平头端头（GP 的 ``start_cap`` / ``end_cap``，CURVE 域 INT8，
     1 = 平头）；整层都没有平头时不建这两个属性。
 
@@ -310,6 +322,7 @@ def build_object(
     （图案取 ``dash``）。返回 ``{图层名: 形状数}``，顺序同建层顺序。
     """
     hidden = hide_stroke_layers or set()
+    rounded = round_join_layers or set()
     if not shapes:
         raise ValueError("no shapes to build")
 
@@ -335,6 +348,7 @@ def build_object(
             group,
             width=radius,
             hide_stroke=layer_name in hidden,
+            miter=layer_name not in rounded,
         )
         counts[layer_name] = len(group)
 
