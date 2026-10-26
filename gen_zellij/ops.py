@@ -284,7 +284,14 @@ class GENZ_OT_sync_from_object(bpy.types.Operator):
         if keys[8] in obj:
             settings.interlace_gap = float(obj[keys[8]])
         if keys[9] in obj:
-            settings.interlace_casing = float(obj[keys[9]])
+            stored = float(obj[keys[9]])
+            # 老对象存的是世界单位的描边半径（~0.0125），新的是倍数（≥ 1）
+            if stored > 1.0:
+                settings.interlace_casing = stored
+            else:
+                settings.interlace_casing = stored / max(
+                    float(settings.interlace_radius), 1e-6
+                )
         if keys[10] in obj:
             settings.interlace_tuck = bool(obj[keys[10]])
         settings.dirty = False

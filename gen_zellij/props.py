@@ -288,14 +288,15 @@ class GenZellijSettings(bpy.types.PropertyGroup):
     )
 
     interlace_casing: bpy.props.FloatProperty(  # type: ignore[valid-type]
-        name="编织描边宽",
-        description="描边的笔划半径，必须比「编织带宽」大才露得出来（差多少就是边的粗细）；"
+        name="描边倍数",
+        description="描边半径按「编织带宽」的倍数给：1.0 = 一样宽（露不出边），默认 1.25 时"
+        "每侧露出 0.25 倍带宽。跟着带宽走，所以改带宽不会把蕾丝边挤没或撑爆；"
         "它同时决定缺口要让开多少，改它也要重新生成",
-        default=0.0125,
-        min=0.0,
-        precision=4,
-        subtype="DISTANCE",
-        unit="LENGTH",
+        default=1.25,
+        min=1.0,
+        max=4.0,
+        soft_max=2.0,
+        precision=3,
         update=_mark_dirty,
     )
 
@@ -422,12 +423,17 @@ class GenZellijSettings(bpy.types.PropertyGroup):
             "shimmer": bool(self.shimmer),
         }
 
+    @property
+    def casing_radius(self) -> float:
+        """描边的笔划半径（世界单位）：面板给的是倍数，这里乘上编织带宽。"""
+        return float(self.interlace_radius) * float(self.interlace_casing)
+
     def layer_widths(self) -> dict:
         """``{图层名: 笔划半径}``；填充层不画描边，半径给 0。"""
         return {
             LAYER_FILLS: 0.0,
             LAYER_OUTLINES: float(self.outline_radius),
-            LAYER_INTERLACE_CASE: float(self.interlace_casing),
+            LAYER_INTERLACE_CASE: self.casing_radius,
             LAYER_INTERLACE: float(self.interlace_radius),
             LAYER_TILING: float(self.tiling_radius),
             LAYER_LINES: float(self.line_radius),
@@ -449,7 +455,7 @@ class GenZellijSettings(bpy.types.PropertyGroup):
         return WeaveStyle(
             half_width=float(self.interlace_radius),
             gap_ratio=float(self.interlace_gap),
-            casing=float(self.interlace_casing),
+            casing=self.casing_radius,
             tuck=bool(self.interlace_tuck),
         )
 

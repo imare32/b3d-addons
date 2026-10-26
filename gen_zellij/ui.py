@@ -78,7 +78,7 @@ class GENZ_PT_main(bpy.types.Panel):
         row.prop(settings, "show_interlace_case", text="　描边")
         sub = row.row(align=True)
         sub.enabled = settings.show_interlace_case
-        sub.prop(settings, "interlace_casing", text="")
+        sub.prop(settings, "interlace_casing", text="×")
         sub.prop(settings, "interlace_case_color", text="")
 
         row = box.row(align=True)
