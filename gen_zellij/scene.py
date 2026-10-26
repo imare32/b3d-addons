@@ -408,7 +408,7 @@ def build_layers(
     * ``Lines`` —— 构造线，裁到图案凸包内。
 
     笔划半径由后端按图层写进点属性，但 **编织的缺口是几何**：缺口宽度按带宽算，
-    所以 ``weave_style`` 一变就必须重新生成（见 ``weave._cut_distance``）。
+    所以 ``weave_style`` 一变就必须重新生成（见 ``weave._end_cut``）。
     """
     if size <= 0.0:
         raise ValueError("size must be positive")

@@ -16,8 +16,11 @@
 * **不靠绘制顺序**：over/under 关系里存在环（A 压 B、B 压 C、C 压 A），任何"分两层、
   一层压另一层"都排不出全局序，所以必须把下面的带子真的切掉。
 
-切多少由带宽决定（:func:`_cut_distance`）：切到"圆头正好贴住上方带子的边缘"为止，
-所以**带宽是几何参数**，改它必须重新生成。``gap`` 只在这个临界值之外再加一圈。
+切多少由带宽决定（:func:`_end_cut`），所以**带宽是几何参数**，改它必须重新生成。
+``WeaveStyle.tuck``（默认开）让压下的那一端**钻到对方身下**（本体同色叠画看不见、
+描边层永远在所有本体下面），于是切口可以取"正好贴平对方边缘"的那个解，斜交叉也能用
+平头——代价是本体会咬掉对方描边环上一小块。关掉则回到零重叠方案：切口远在对方身影
+之外，斜交叉只能用圆头。
 
 纯 Python，不 import bpy；结果与随机流无关（同 seed 必然同结果）。
 """
@@ -48,7 +51,13 @@ PRUNE = 2.0
 
 #: 交叉角正弦高于此值（≈ 64°..116°）才用平头。实测交叉角只有 45° 和 90° 两种，
 #: 90° 时平头的切面正好压在对方带子的边缘线上，45° 时平头会甩出一个尖角缺口，不如圆头。
+#: 只在 ``WeaveStyle.tuck=False``（不许压进对方身下）时用到。
 FLAT_CAP_SIN = 0.9
+
+#: ``tuck=True`` 时交叉角正弦的下限：低于它就不再"钻到对方身下"（``tan(θ/2)`` 随角度
+#: 变小趋于 0，钻进去的那截会越拉越长，咬掉对方描边环的口子也跟着变长），退回零重叠
+#: 的圆头。实测的两个角度（45° = 0.707、90° = 1）都在门内。
+TUCK_SIN = 0.5
 
 #: 修剪的迭代次数：每轮收回一刀，收敛极快，留几轮兜底。
 _PRUNE_PASSES = 8
@@ -64,9 +73,13 @@ class WeaveStyle:
     #: 它不改变几何，只影响缺口要让开多少——所以缺口是按 ``max(half_width, casing)`` 算的。
     casing: float = 0.0125
     #: 缺口在"刚好贴住上方带子"之外再多留的量，单位是**可见半宽**的倍数。
+    #: ``tuck=True`` 时语义反过来：再往里**多钻**这么多，让贴平更确定。
     gap_ratio: float = 0.0
     #: 端点聚类容差（世界单位）；0 = 按包围盒自动取 ``SNAP_RATIO``。
     snap: float = 0.0
+    #: 允许压下的那一端钻到对方身下（切口取"贴平对方边缘"的解，斜交叉也用平头）。
+    #: 关掉是旧的零重叠方案：只有接近垂直的交叉能贴平，其余用圆头（见 ``_end_cut``）。
+    tuck: bool = True
 
 
 @dataclass(slots=True)
@@ -75,8 +88,8 @@ class Weave:
 
     #: ``(点列, 是否闭合)``；闭合只出现在整根带子一处交叉都没有的时候。
     paths: list[tuple[list[Point], bool]] = field(default_factory=list)
-    #: 与 ``paths`` 一一对应：``(起点是否平头, 终点是否平头)``。平头只用在接近 90° 的
-    #: 交叉上（切面正好压在对方带子的边缘线上）；45° 交叉用圆头，一个切点更干净。
+    #: 与 ``paths`` 一一对应：``(起点是否平头, 终点是否平头)``。``tuck`` 打开时平头用在
+    #: 所有交叉上（切口整个藏在对方身下）；关掉时只用在接近 90° 的交叉上，斜交叉用圆头。
     caps: list[tuple[bool, bool]] = field(default_factory=list)
     nodes: int = 0
     edges: int = 0
@@ -467,30 +480,40 @@ def _subtract(total: float, cuts, closed: bool):
     return keep
 
 
-def _cut_distance(reach: float, gap: float, sin_angle: float, flat: bool) -> float:
-    """压下去那一端要往回切多远。
+def _end_cut(reach: float, gap: float, sin_angle: float, tuck: bool) -> tuple[float, bool]:
+    """压下去那一端要往回切多远，以及该用哪种端头。
 
     ``reach`` 是**可见半宽**（本体与 casing 取大者），``sin(θ)`` 取该顶点上**最斜**的
-    那根交叉带（缺口取最大，宁可多切也不要戳出来）。两种端头两套公式：
+    那根交叉带（缺口取最大，宁可多切也不要戳出来）。
 
-    * **平头**（切面垂直于自己）：两个角到对方中心线是 ``d·sinθ ± reach·cosθ``，要让
-      靠里的角正好贴住对方边缘::
+    ``tuck=False``（旧方案）：**不许压进对方身下**。平头的切面垂直于自己，两个角到对方
+    中心线是 ``d·sinθ ± reach·cosθ``，要让靠里的角贴住对方边缘::
 
-          d = reach * (1 + cosθ) / sinθ = reach / tan(θ/2)
+        d = reach * (1 + cosθ) / sinθ = reach / tan(θ/2)
 
-      90° 时 ``d = reach``，切口正好压在对方边缘线上——这才是 Alhambra 那种"切进去"
-      的样子。45° 时靠外的角会甩出 ``2·reach·cosθ``，所以不用平头（见 ``FLAT_CAP_SIN``）；
-    * **圆头**：GP 会在末点之外再糊出半个笔宽，"切到 d"实际是"圆头尖停在 ``d - reach``
-      处"，于是::
+    90° 时 ``d = reach``，切口正好压在对方边缘线上——这才是 Alhambra 那种"切进去"的
+    样子；45° 时靠外的角会甩出 ``2·reach·cosθ``，所以斜交叉只用圆头::
 
-          (d - reach) * sin(θ) >= reach + gap
-          d = reach + (reach + gap) / sin(θ)
+        (d - reach) * sin(θ) >= reach + gap
+        d = reach + (reach + gap) / sin(θ)
+
+    ``tuck=True``：允许那一端**钻到对方身下**，于是可以取"贴平"的那个解——
+
+        d = (reach - gap) * (1 - cosθ) / sinθ = (reach - gap) * tan(θ/2)
+
+    钻进去的那一截为什么看不见：本体同色不透明（盖住对方本体看不出来），描边在
+    ``Interlace Case`` 这张独立图层里、永远在所有本体下面（深压深也看不出来）。露在
+    外面的轮廓因此精确与对方边缘重合，斜交叉也能用平头。代价只剩"本体咬掉对方描边环
+    上一小块"（45° 实测 0.53 reach²，比零重叠方案里圆头已经咬的 0.23 略大）。
+    ``sinθ < TUCK_SIN`` 时钻得没完没了，退回零重叠的圆头。
     """
     sine = max(sin_angle, SIN_FLOOR)
-    if flat:
-        cosine = math.sqrt(max(0.0, 1.0 - sine * sine))
-        return reach * (1.0 + cosine) / sine
-    return reach + (reach + gap) / sine
+    cosine = math.sqrt(max(0.0, 1.0 - sine * sine))
+    if tuck and sin_angle >= TUCK_SIN:
+        return max(0.0, reach - gap) * (1.0 - cosine) / sine, True
+    if not tuck and sin_angle >= FLAT_CAP_SIN:
+        return reach * (1.0 + cosine) / sine, True
+    return reach + (reach + gap) / sine, False
 
 
 # --- 主流程 ----------------------------------------------------------------
@@ -508,6 +531,7 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
     #: 可见半宽：casing 画在本体下面且更宽，所以真正占地方、真正要被让开的是它。
     reach = max(radius, casing)
     gap = max(0.0, float(style.gap_ratio)) * max(reach, 1e-12)
+    tuck = bool(style.tuck)
 
     points, edges = _edge_network(polygons, style.snap)
     result = Weave(nodes=len(points), edges=len(edges))
@@ -656,11 +680,8 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
                                   crossings[node_id], pid_node, pid_ends, points, edges)
                 sin_out = _min_sin(pid, _norm(_sub(points[next_node], here)),
                                    crossings[node_id], pid_node, pid_ends, points, edges)
-                # 接近垂直的交叉用平头（切面正好压在对方边缘线上），45° 用圆头
-                flat_in = sin_in >= FLAT_CAP_SIN
-                flat_out = sin_out >= FLAT_CAP_SIN
-                d_in = _cut_distance(reach, gap, sin_in, flat_in)
-                d_out = _cut_distance(reach, gap, sin_out, flat_out)
+                d_in, flat_in = _end_cut(reach, gap, sin_in, tuck)
+                d_out, flat_out = _end_cut(reach, gap, sin_out, tuck)
                 cuts.append((cum[i] - d_in, cum[i] + d_out, node_id, flat_in, flat_out))
                 result.cuts += 1
 

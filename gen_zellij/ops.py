@@ -137,6 +137,7 @@ def _store(settings, obj, seed: int) -> None:
     obj[DESIGN_KEYS[7]] = float(settings.interlace_radius)
     obj[DESIGN_KEYS[8]] = float(settings.interlace_gap)
     obj[DESIGN_KEYS[9]] = float(settings.interlace_casing)
+    obj[DESIGN_KEYS[10]] = bool(settings.interlace_tuck)
 
 
 class GENZ_OT_generate(bpy.types.Operator):
@@ -269,13 +270,15 @@ class GENZ_OT_sync_from_object(bpy.types.Operator):
         settings.canvas = float(obj[keys[4]])
         settings.margin = float(obj[keys[5]])
         settings.outline_radius = float(obj[keys[6]])
-        # 旧对象没有这两项（编织是后加的），缺了就保留面板当前值
+        # 旧对象没有这几项（编织是后加的），缺了就保留面板当前值
         if keys[7] in obj:
             settings.interlace_radius = float(obj[keys[7]])
         if keys[8] in obj:
             settings.interlace_gap = float(obj[keys[8]])
         if keys[9] in obj:
             settings.interlace_casing = float(obj[keys[9]])
+        if keys[10] in obj:
+            settings.interlace_tuck = bool(obj[keys[10]])
         settings.dirty = False
         self.report(
             {"INFO"}, f"read back seed={settings.seed} density={settings.density}"

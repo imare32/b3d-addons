@@ -82,6 +82,10 @@ class GENZ_PT_main(bpy.types.Panel):
         sub.prop(settings, "interlace_case_color", text="")
 
         row = box.row(align=True)
+        row.enabled = settings.show_interlace
+        row.prop(settings, "interlace_tuck", text="　平头交叉")
+
+        row = box.row(align=True)
         row.prop(settings, "show_tiling", text="瓷砖线")
         sub = row.row(align=True)
         sub.enabled = settings.show_tiling

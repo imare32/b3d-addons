@@ -60,6 +60,7 @@ DESIGN_KEYS = (
     "gen_zellij_interlace_radius",
     "gen_zellij_interlace_gap",
     "gen_zellij_interlace_casing",
+    "gen_zellij_interlace_tuck",
 )
 
 #: 焦点特征的**显示名**：标识（存进文件、写进对象参数）保持 ASCII 稳定，
@@ -277,6 +278,15 @@ class GenZellijSettings(bpy.types.PropertyGroup):
         update=_mark_dirty,
     )
 
+    interlace_tuck: bpy.props.BoolProperty(  # type: ignore[valid-type]
+        name="平头交叉",
+        description="斜交叉也让压下的带子钻到对方身下、用平头贴平：切口按 tan(θ/2) 算，"
+        "露在外面的轮廓与对方边缘完全重合。钻进去的那一截看不见（本体同色、描边在独立"
+        "下层），代价是本体咬掉对方描边环上一小块。关掉则只有接近 90° 的交叉用平头",
+        default=True,
+        update=_mark_dirty,
+    )
+
     interlace_casing: bpy.props.FloatProperty(  # type: ignore[valid-type]
         name="编织描边宽",
         description="描边的笔划半径，必须比「编织带宽」大才露得出来（差多少就是边的粗细）；"
@@ -440,6 +450,7 @@ class GenZellijSettings(bpy.types.PropertyGroup):
             half_width=float(self.interlace_radius),
             gap_ratio=float(self.interlace_gap),
             casing=float(self.interlace_casing),
+            tuck=bool(self.interlace_tuck),
         )
 
 
