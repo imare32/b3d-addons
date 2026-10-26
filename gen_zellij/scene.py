@@ -15,6 +15,7 @@ Pencil、SVG、mesh ...）都可以直接消费。填充与它的描边是**两�
 from __future__ import annotations
 
 import colorsys
+import math
 from dataclasses import dataclass
 
 from .design import RGB, Design, filler_transform, match_filler, rand_fill
@@ -460,28 +461,68 @@ def build_layers(
 _IDENTITY = make_affine(1.0, 0.0, 0.0, 0.0, 1.0, 0.0)
 
 
-def _dedupe(shapes: list[Shape], digits: int = 4) -> list[Shape]:
+def _dedupe(shapes: list[Shape], tolerance: float = 2e-4, cell: float = 1e-3) -> list[Shape]:
     """去掉几何重合的填充块（保留最上面那一份，颜色以盖在上面的为准）。
 
-    填充是实心的，重合块在屏幕上只看得见最上面一层；但它们的描边会叠画两次，
-    边界显得更深更粗。相邻瓷砖常常被匹配到同一个图案簇，投影到同一个位置后
-    只差几个 1e-5，所以按 4 位小数量化比较。
+    填充是实心的，重合块在屏幕上只看得见最上面一层；但它们的描边会叠画两次，边界显得
+    更深更粗，编织也会把同一条边当成两条（结点度数翻倍、配对乱掉）。
+
+    重合的两份来自不同的图案簇，投影到同一位置后差到 1e-4 量级（实测最大 8e-5）。原来
+    的做法是把顶点量化到 4 位小数做键——这点差正好骑在量化边界上，同一份有时落进同一个
+    格子、有时落到隔壁，于是"有的去掉了、有的没去掉"（实测 density 10 还有 216 组重合，
+    最多的一份被填了 6 次）。
+
+    现在按质心分桶（桶比容差大一个量级，再查 3×3 邻域），桶内逐点按容差做匹配。不能先
+    把顶点排个序再逐个 zip：这些多边形有一堆共线的顶点，绕质心的角度几乎相同，1e-4 的
+    噪声就能让两份的顶点顺序对不上。
     """
-    seen = set()
-    kept = []
+    grid: dict[tuple[int, int], list[list[tuple[float, float]]]] = {}
+    kept: list[Shape] = []
     for shape in reversed(shapes):
-        key = (
-            len(shape.points),
-            tuple(
-                sorted((round(x, digits), round(y, digits)) for x, y in shape.points)
-            ),
-        )
-        if key in seen:
+        points = shape.points
+        if len(points) < 3:
+            kept.append(shape)
             continue
-        seen.add(key)
+        centre_x = sum(point[0] for point in points) / len(points)
+        centre_y = sum(point[1] for point in points) / len(points)
+        key = (math.floor(centre_x / cell), math.floor(centre_y / cell))
+        duplicate = False
+        for offset_x in (-1, 0, 1):
+            for offset_y in (-1, 0, 1):
+                for other in grid.get((key[0] + offset_x, key[1] + offset_y), ()):
+                    if _same_polygon(points, other, tolerance):
+                        duplicate = True
+                        break
+                if duplicate:
+                    break
+            if duplicate:
+                break
+        if duplicate:
+            continue
+        grid.setdefault(key, []).append(points)
         kept.append(shape)
     kept.reverse()
     return kept
+
+
+def _same_polygon(
+    a: list[tuple[float, float]], b: list[tuple[float, float]], tolerance: float
+) -> bool:
+    """两份顶点数相同的多边形是否逐一重合（容差内，顶点顺序无关）。"""
+    if len(a) != len(b):
+        return False
+    left = list(b)
+    for point in a:
+        for index, other in enumerate(left):
+            if (
+                abs(point[0] - other[0]) <= tolerance
+                and abs(point[1] - other[1]) <= tolerance
+            ):
+                left.pop(index)
+                break
+        else:
+            return False
+    return True
 
 
 def _apply(shapes: list[Shape], matrix) -> list[Shape]:
