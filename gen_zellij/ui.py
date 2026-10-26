@@ -48,14 +48,10 @@ class GENZ_PT_main(bpy.types.Panel):
         row.scale_y = 1.4
         text = "更新" if obj is not None else "生成"
         row.operator("gen_zellij.generate", text=text, icon="MOD_BUILD")
-        if settings.dirty and obj is not None:
-            layout.label(text="参数已改，需重新生成", icon="INFO")
-        if settings.show_interlace:
-            layout.label(text="编织的缺口是几何：改带宽/间隙要重建", icon="INFO")
 
         # --- 图层 ---------------------------------------------------------
         box = layout.box()
-        box.label(text="图层", icon="LAYER_USED")
+        box.label(text="图层", icon="LAYERGROUP_COLOR_04")
 
         row = box.row(align=True)
         row.prop(settings, "show_fills", text="块填充")
@@ -75,15 +71,15 @@ class GENZ_PT_main(bpy.types.Panel):
         sub.prop(settings, "interlace_color", text="")
 
         row = box.row(align=True)
-        row.prop(settings, "show_interlace_case", text="　描边")
+        row.prop(settings, "show_interlace_case", text="描边")
         sub = row.row(align=True)
         sub.enabled = settings.show_interlace_case
-        sub.prop(settings, "interlace_casing", text="×")
+        sub.prop(settings, "interlace_casing", text="x")
         sub.prop(settings, "interlace_case_color", text="")
 
         row = box.row(align=True)
         row.enabled = settings.show_interlace
-        row.prop(settings, "interlace_tuck", text="　平头交叉")
+        row.prop(settings, "interlace_tuck", text="平头交叉")
 
         row = box.row(align=True)
         row.prop(settings, "show_tiling", text="瓷砖线")
@@ -99,6 +95,11 @@ class GENZ_PT_main(bpy.types.Panel):
         sub.prop(settings, "line_radius", text="")
         sub.prop(settings, "line_color", text="")
         sub.prop(settings, "dashed", text="", icon="IPO_CONSTANT")
+
+        if settings.dirty and obj is not None:
+            layout.label(text="参数已改，需重新生成", icon="INFO")
+        if settings.show_interlace:
+            layout.label(text="编织的缺口是几何：改带宽/间隙要重建", icon="INFO")
 
         # --- 工具 ---------------------------------------------------------
         layout.separator()
