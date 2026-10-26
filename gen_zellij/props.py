@@ -137,7 +137,7 @@ class GenZellijSettings(bpy.types.PropertyGroup):
 
     # --- 设计 -------------------------------------------------------------
 
-    seed: bpy.props.IntProperty(  # type: ignore[valid-type]
+    seed: bpy.props.IntProperty(
         name="种子",
         description="同一 seed + 同一参数必然生成同一张图；改它就换一张",
         default=1,
@@ -147,13 +147,13 @@ class GenZellijSettings(bpy.types.PropertyGroup):
         soft_max=99999,
     )
 
-    random_seed: bpy.props.BoolProperty(  # type: ignore[valid-type]
+    random_seed: bpy.props.BoolProperty(
         name="每次换种子",
         description="每次生成都抽一个新种子（抽到的值会写回种子框，便于复现）",
         default=False,
     )
 
-    density: bpy.props.EnumProperty(  # type: ignore[valid-type]
+    density: bpy.props.EnumProperty(
         name="密度",
         description="构造线密度：同时决定交点网格边长与保留的构造线条数",
         items=DENSITY_ITEMS,
@@ -161,21 +161,21 @@ class GenZellijSettings(bpy.types.PropertyGroup):
         update=_mark_dirty,
     )
 
-    focus: bpy.props.EnumProperty(  # type: ignore[valid-type]
+    focus: bpy.props.EnumProperty(
         name="焦点",
         description="强制出现的焦点特征（随机结果多半没有焦点）",
         items=focus_items,
         update=_mark_dirty,
     )
 
-    shimmer: bpy.props.BoolProperty(  # type: ignore[valid-type]
+    shimmer: bpy.props.BoolProperty(
         name="颜色抖动",
         description="对 2 号以后的色板做明度抖动：同一基色出现多种相近色",
         default=False,
         update=_mark_dirty,
     )
 
-    canvas: bpy.props.FloatProperty(  # type: ignore[valid-type]
+    canvas: bpy.props.FloatProperty(
         name="画布",
         description="设计画布边长（世界单位），图案正好落在这个正方形内",
         default=10.0,
@@ -186,7 +186,7 @@ class GenZellijSettings(bpy.types.PropertyGroup):
         update=_mark_dirty,
     )
 
-    margin: bpy.props.FloatProperty(  # type: ignore[valid-type]
+    margin: bpy.props.FloatProperty(
         name="边距",
         description="画布内留白（世界单位）；0 = 图案贴住原点",
         default=0.0,
@@ -199,21 +199,21 @@ class GenZellijSettings(bpy.types.PropertyGroup):
 
     # --- 图层 -------------------------------------------------------------
 
-    show_fills: bpy.props.BoolProperty(  # type: ignore[valid-type]
+    show_fills: bpy.props.BoolProperty(
         name="填充图案",
         description="成品马赛克：每条填充形状就是一块色块（只有填充，不带描边）",
         default=True,
         update=_apply_visibility,
     )
 
-    show_outlines: bpy.props.BoolProperty(  # type: ignore[valid-type]
+    show_outlines: bpy.props.BoolProperty(
         name="块轮廓",
         description="与填充同一套几何的描边层（颜色由填充色派生）；和编织只留一个就够",
         default=False,
         update=_apply_visibility,
     )
 
-    show_interlace: bpy.props.BoolProperty(  # type: ignore[valid-type]
+    show_interlace: bpy.props.BoolProperty(
         name="编织",
         description="把同一套色块边网编成上下交替的带子：交叉点上交替压下，"
         "压下的那一端切掉缺口（缺口宽度按带宽算，所以改带宽要重新生成）",
@@ -221,21 +221,21 @@ class GenZellijSettings(bpy.types.PropertyGroup):
         update=_apply_visibility,
     )
 
-    show_interlace_case: bpy.props.BoolProperty(  # type: ignore[valid-type]
+    show_interlace_case: bpy.props.BoolProperty(
         name="编织描边",
         description="带子下面那条更粗的深色描边，露出来的一圈就是蕾丝边",
         default=True,
         update=_apply_visibility,
     )
 
-    show_tiling: bpy.props.BoolProperty(  # type: ignore[valid-type]
+    show_tiling: bpy.props.BoolProperty(
         name="瓷砖分界线",
         description="去重后的瓷砖边网络（每条分界线只画一次）",
         default=False,
         update=_apply_visibility,
     )
 
-    show_lines: bpy.props.BoolProperty(  # type: ignore[valid-type]
+    show_lines: bpy.props.BoolProperty(
         name="构造线",
         description="裁到拼贴区凸包内的构造线，等弧长采样，可虚线化",
         default=False,
@@ -244,7 +244,7 @@ class GenZellijSettings(bpy.types.PropertyGroup):
 
     # --- 线宽与配色 -------------------------------------------------------
 
-    outline_radius: bpy.props.FloatProperty(  # type: ignore[valid-type]
+    outline_radius: bpy.props.FloatProperty(
         name="块轮廓宽",
         description="块轮廓的笔划半径（世界单位，总宽 = 2×半径）；不影响几何，改它不用重新生成",
         default=0.01,
@@ -255,7 +255,7 @@ class GenZellijSettings(bpy.types.PropertyGroup):
         update=_apply_stroke_widths,
     )
 
-    interlace_radius: bpy.props.FloatProperty(  # type: ignore[valid-type]
+    interlace_radius: bpy.props.FloatProperty(
         name="编织带宽",
         description="编织带子的笔划半径（总宽 = 2×半径，含描边则是 2×描边宽）；"
         "缺口按带宽算，属于几何，改它必须重新生成。画布 10 时 0.010 左右是绢白勾缝",
@@ -267,7 +267,7 @@ class GenZellijSettings(bpy.types.PropertyGroup):
         update=_mark_dirty,
     )
 
-    interlace_gap: bpy.props.FloatProperty(  # type: ignore[valid-type]
+    interlace_gap: bpy.props.FloatProperty(
         name="编织间隙",
         description="缺口在「刚好贴住上方带子」之外再多留的量，单位是半宽的倍数；"
         "0 = 压下的带子正好顶到上方带子的边（编织的默认形态），越大缝越明显",
@@ -278,7 +278,7 @@ class GenZellijSettings(bpy.types.PropertyGroup):
         update=_mark_dirty,
     )
 
-    interlace_tuck: bpy.props.BoolProperty(  # type: ignore[valid-type]
+    interlace_tuck: bpy.props.BoolProperty(
         name="平头交叉",
         description="斜交叉也让压下的带子钻到对方身下、用平头贴平：切口按 tan(θ/2) 算，"
         "露在外面的轮廓与对方边缘完全重合。钻进去的那一截看不见（本体同色、描边在独立"
@@ -287,7 +287,7 @@ class GenZellijSettings(bpy.types.PropertyGroup):
         update=_mark_dirty,
     )
 
-    interlace_casing: bpy.props.FloatProperty(  # type: ignore[valid-type]
+    interlace_casing: bpy.props.FloatProperty(
         name="描边倍数",
         description="描边半径按「编织带宽」的倍数给：1.0 = 一样宽（露不出边），默认 1.25 时"
         "每侧露出 0.25 倍带宽。跟着带宽走，所以改带宽不会把蕾丝边挤没或撑爆；"
@@ -300,7 +300,7 @@ class GenZellijSettings(bpy.types.PropertyGroup):
         update=_mark_dirty,
     )
 
-    interlace_case_color: bpy.props.FloatVectorProperty(  # type: ignore[valid-type]
+    interlace_case_color: bpy.props.FloatVectorProperty(
         name="描边色",
         description="编织描边的颜色（默认墨玄，给绢白带子勾一圈细边）",
         size=3,
@@ -311,7 +311,7 @@ class GenZellijSettings(bpy.types.PropertyGroup):
         update=_mark_dirty,
     )
 
-    interlace_color: bpy.props.FloatVectorProperty(  # type: ignore[valid-type]
+    interlace_color: bpy.props.FloatVectorProperty(
         name="编织色",
         description="编织带子的颜色（一根带子通常横跨多个色块，所以是单色而不是按块派生）。"
         "默认取色板的绢白——和真迹里的石膏勾缝一个道理",
@@ -323,7 +323,7 @@ class GenZellijSettings(bpy.types.PropertyGroup):
         update=_mark_dirty,
     )
 
-    tiling_radius: bpy.props.FloatProperty(  # type: ignore[valid-type]
+    tiling_radius: bpy.props.FloatProperty(
         name="瓷砖线宽",
         description="瓷砖分界线的笔划半径，改它不用重新生成",
         default=0.006,
@@ -334,7 +334,7 @@ class GenZellijSettings(bpy.types.PropertyGroup):
         update=_apply_stroke_widths,
     )
 
-    line_radius: bpy.props.FloatProperty(  # type: ignore[valid-type]
+    line_radius: bpy.props.FloatProperty(
         name="构造线宽",
         description="构造细线的笔划半径，改它不用重新生成",
         default=0.0035,
@@ -345,7 +345,7 @@ class GenZellijSettings(bpy.types.PropertyGroup):
         update=_apply_stroke_widths,
     )
 
-    tiling_color: bpy.props.FloatVectorProperty(  # type: ignore[valid-type]
+    tiling_color: bpy.props.FloatVectorProperty(
         name="瓷砖线色",
         description="瓷砖分界线的颜色（默认红，当构造视图看）",
         size=3,
@@ -356,7 +356,7 @@ class GenZellijSettings(bpy.types.PropertyGroup):
         update=_mark_dirty,
     )
 
-    line_color: bpy.props.FloatVectorProperty(  # type: ignore[valid-type]
+    line_color: bpy.props.FloatVectorProperty(
         name="构造线色",
         description="构造线的颜色（默认浅灰，深色画布上也看得见）",
         size=3,
@@ -367,7 +367,7 @@ class GenZellijSettings(bpy.types.PropertyGroup):
         update=_mark_dirty,
     )
 
-    dashed: bpy.props.BoolProperty(  # type: ignore[valid-type]
+    dashed: bpy.props.BoolProperty(
         name="Dot Dash 修改器",
         description="用 Dot Dash 修改器处理构造线；图案见 gp.DASH_PATTERN，"
         "默认 (2, 0) = 1:1 虚线，(1, 0) 则是实线",
@@ -377,38 +377,38 @@ class GenZellijSettings(bpy.types.PropertyGroup):
 
     # --- 状态（只读） -----------------------------------------------------
 
-    dirty: bpy.props.BoolProperty(  # type: ignore[valid-type]
+    dirty: bpy.props.BoolProperty(
         name="待更新",
         description="参数改过但还没重新生成",
         default=True,
     )
 
-    last_seed: bpy.props.IntProperty(  # type: ignore[valid-type]
+    last_seed: bpy.props.IntProperty(
         name="上次种子",
         default=-1,
     )
 
-    last_shapes: bpy.props.IntProperty(  # type: ignore[valid-type]
+    last_shapes: bpy.props.IntProperty(
         name="形状数",
         default=0,
     )
 
-    last_ms: bpy.props.FloatProperty(  # type: ignore[valid-type]
+    last_ms: bpy.props.FloatProperty(
         name="耗时",
         default=0.0,
     )
 
-    last_layers: bpy.props.StringProperty(  # type: ignore[valid-type]
+    last_layers: bpy.props.StringProperty(
         name="分层",
         default="",
     )
 
-    last_note: bpy.props.StringProperty(  # type: ignore[valid-type]
+    last_note: bpy.props.StringProperty(
         name="提示",
         default="",
     )
 
-    error: bpy.props.StringProperty(  # type: ignore[valid-type]
+    error: bpy.props.StringProperty(
         name="错误",
         default="",
     )
