@@ -53,22 +53,30 @@ def _build(settings):
 
 
 def _recolor(shapes, colours: dict):
-    """调试图层（Tiling / Lines）的描边色可被面板覆盖，其余图层原样返回。"""
+    """面板可覆盖的颜色：编织两层与两个调试图层，其余图层原样返回。
+
+    编织层里既有笔划（本体 / 描边）也有只填不描的端头补片，两种都要跟着面板色走，
+    所以这里按"有描边就换描边、有填充就换填充"处理。
+    """
     from .scene import Shape
 
-    return [
-        Shape(
-            shape.points,
-            shape.fill,
-            colours.get(shape.layer, shape.stroke),
-            shape.closed,
-            shape.layer,
-            shape.caps,
+    recoloured = []
+    for shape in shapes:
+        colour = colours.get(shape.layer)
+        if colour is None:
+            recoloured.append(shape)
+            continue
+        recoloured.append(
+            Shape(
+                shape.points,
+                None if shape.fill is None else colour,
+                None if shape.stroke is None else colour,
+                shape.closed,
+                shape.layer,
+                shape.caps,
+            )
         )
-        if shape.fill is None
-        else shape
-        for shape in shapes
-    ]
+    return recoloured
 
 
 def _viewport_note(status: str, fixed: int) -> str:

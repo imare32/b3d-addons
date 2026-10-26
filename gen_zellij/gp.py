@@ -218,16 +218,21 @@ def _write_drawing(drawing, shapes, *, width: float, hide_stroke: bool = False) 
         (0.0, 0.0, 0.0, 1.0),
     )
 
+    # fill_color / fill_id 都是逐笔划的，**必须与笔划数等长**：同一图层里可能既有
+    # 只描不填的（编织本体）又有只填不描的（端头补片），两个属性都得给全。
     fill_colours = []
     fill_ids = []
+    filled = 0
     for shape in shapes:
         if shape.fill is None:
+            fill_colours.append((0.0, 0.0, 0.0, 1.0))
             fill_ids.append(0)
         else:
+            filled += 1
             fill_colours.append(_linear_rgba(shape.fill))
-            fill_ids.append(len(fill_ids) + 1)
+            fill_ids.append(filled)
 
-    if fill_colours:
+    if filled:
         fill_color = drawing.attributes.get(_ATTR_FILL_COLOR)
         if fill_color is None:
             fill_color = drawing.attributes.new(
@@ -239,10 +244,16 @@ def _write_drawing(drawing, shapes, *, width: float, hide_stroke: bool = False) 
         fill_id = drawing.attributes.new(_ATTR_FILL_ID, "INT", "CURVE")
     fill_id.data.foreach_set("value", fill_ids)
 
+    # 只填不描的形状（填充层的瓷砖、编织层里的端头补片）逐笔划关掉描边：
+    # 图层宽度是统一的，补片要是跟着描一圈，会把不该盖的地方盖掉。
+    hidden = [
+        bool(hide_stroke) or (shape.fill is not None and shape.stroke is None)
+        for shape in shapes
+    ]
     hide_attr = drawing.attributes.get(_ATTR_HIDE_STROKE)
     if hide_attr is None:
         hide_attr = drawing.attributes.new(_ATTR_HIDE_STROKE, "BOOLEAN", "CURVE")
-    hide_attr.data.foreach_set("value", [bool(hide_stroke)] * len(shapes))
+    hide_attr.data.foreach_set("value", hidden)
 
     # 端头：默认圆头，属性不存在就等价于全 0；只有真的混着平头时才写
     if any(start or end for start, end in (shape.caps for shape in shapes)):

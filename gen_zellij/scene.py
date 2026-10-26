@@ -368,6 +368,10 @@ def _interlace_shapes(fills: list[Shape], style: WeaveStyle) -> list[Shape]:
     给了 ``style.casing`` 时，每根带子先出一条**更粗的描边**（独立图层，压在带子下面），
     再出本体——露出来的那一圈就是蕾丝边。描边放独立图层而不是同层交错，是因为同层里
     后画的描边会压到前一根带子的本体上（交叉处一根深线横穿别人的身体）。
+
+    两层的切口**不一样**：描边要贴平对方边缘，本体必须退出对方 footprint（否则斜交叉
+    上会咬断对方那圈描边，上下遮挡就没了），退出来的缺口由 ``result.tips`` 那批多边形
+    补片按对方边缘裁齐补上——只填不描，画在本体层。
     """
     result = build_weave([shape.points for shape in fills], style)
     shapes: list[Shape] = []
@@ -376,10 +380,14 @@ def _interlace_shapes(fills: list[Shape], style: WeaveStyle) -> list[Shape]:
             Shape(points, None, BLACK, closed, LAYER_INTERLACE_CASE, caps)
             for (points, closed), caps in zip(result.paths, result.caps)
         )
+    body = result.body_paths or result.paths
+    body_caps = result.body_caps or result.caps
     shapes.extend(
         Shape(points, None, BLACK, closed, LAYER_INTERLACE, caps)
-        for (points, closed), caps in zip(result.paths, result.caps)
+        for (points, closed), caps in zip(body, body_caps)
     )
+    # 本体切口处"沿对方边缘裁齐"的补片：只填不描（颜色跟着面板的编织色走）
+    shapes.extend(Shape(points, BLACK, None, True, LAYER_INTERLACE) for points in result.tips)
     return shapes
 
 

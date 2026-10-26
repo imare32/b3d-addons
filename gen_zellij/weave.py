@@ -59,6 +59,10 @@ FLAT_CAP_SIN = 0.9
 #: 的圆头。实测的两个角度（45° = 0.707、90° = 1）都在门内。
 TUCK_SIN = 0.5
 
+#: 端头补片（:func:`_tip_patch`）的触发门槛：缺口短于 ``TIP_MIN × 可见半宽`` 就不补——
+#: 90° 上笔划切口本来就与对方边缘平齐（缺口 0），补片只会和笔划重叠。
+TIP_MIN = 0.5
+
 #: 修剪的迭代次数：每轮收回一刀，收敛极快，留几轮兜底。
 _PRUNE_PASSES = 8
 
@@ -91,6 +95,17 @@ class Weave:
     #: 与 ``paths`` 一一对应：``(起点是否平头, 终点是否平头)``。``tuck`` 打开时平头用在
     #: 所有交叉上（切口整个藏在对方身下）；关掉时只用在接近 90° 的交叉上，斜交叉用圆头。
     caps: list[tuple[bool, bool]] = field(default_factory=list)
+    #: 本体那一套切口（世界坐标）；空 = 与 ``paths`` 相同。``tuck`` 时本体退得更远——它
+    #: 必须完全退出对方 footprint，否则会咬断对方那圈深色描边，上下遮挡就没了。
+    body_paths: list[tuple[list[Point], bool]] = field(default_factory=list)
+    #: 与 ``body_paths`` 一一对应。
+    body_caps: list[tuple[bool, bool]] = field(default_factory=list)
+    #: 本体退出去留下的缺口 → 沿**对方带子边缘**裁齐的凸多边形（世界坐标），画在本体层、
+    #: 只填不描。它把轮廓补回边缘线上，等于把多边形方案的裁切局部搬了进来：贴平与遮挡
+    #: 同时成立（笔划端头做不到——切面只能垂直于自己，对方边缘是斜的）。
+    tips: list[list[Point]] = field(default_factory=list)
+    #: 本体那一套里被收回去的缺口数。
+    body_pruned: int = 0
     nodes: int = 0
     edges: int = 0
     strands: int = 0
@@ -100,6 +115,7 @@ class Weave:
     pruned: int = 0
     #: 绘制次序用的"下→上"关系：``(交叉点, 段序号, 是否压在下面)``。同一个交叉点上
     #: 必然同时有压上的一段和压下的若干段；按"下先画"拓扑排序就能让圆头被盖住。
+    #: 段序号指 ``paths``（外廓那一套）里的下标。
     links: list[tuple[int, int, bool]] = field(default_factory=list)
     #: "没能沿带子交替"的通过段数。奇数环（三角形色块）上必然出现，**不是错误**：
     #: 每个交叉点仍然严格一上一下（见 ``build_weave`` 里的说明）。
@@ -480,40 +496,111 @@ def _subtract(total: float, cuts, closed: bool):
     return keep
 
 
-def _end_cut(reach: float, gap: float, sin_angle: float, tuck: bool) -> tuple[float, bool]:
+def _end_cut(
+    reach: float, gap: float, sin_angle: float, tuck: bool, flush: bool = True
+) -> tuple[float, bool]:
     """压下去那一端要往回切多远，以及该用哪种端头。
 
     ``reach`` 是**可见半宽**（本体与 casing 取大者），``sin(θ)`` 取该顶点上**最斜**的
-    那根交叉带（缺口取最大，宁可多切也不要戳出来）。
+    那根交叉带（缺口取最大，宁可多切也不要戳出来）。``flush`` 只对 ``tuck`` 有意义：
+    描边层要贴平（``True``），本体层要退出对方 footprint（``False``，缺口交给补片）。
 
     ``tuck=False``（旧方案）：**不许压进对方身下**。平头的切面垂直于自己，两个角到对方
     中心线是 ``d·sinθ ± reach·cosθ``，要让靠里的角贴住对方边缘::
 
         d = reach * (1 + cosθ) / sinθ = reach / tan(θ/2)
 
-    90° 时 ``d = reach``，切口正好压在对方边缘线上——这才是 Alhambra 那种"切进去"的
-    样子；45° 时靠外的角会甩出 ``2·reach·cosθ``，所以斜交叉只用圆头::
+    90° 时 ``d = reach``，切口正好压在对方边缘线上；45° 时靠外的角会甩出
+    ``2·reach·cosθ``，所以斜交叉只用圆头::
 
         (d - reach) * sin(θ) >= reach + gap
         d = reach + (reach + gap) / sin(θ)
 
-    ``tuck=True``：允许那一端**钻到对方身下**，于是可以取"贴平"的那个解——
+    ``tuck=True``：允许那一端**钻到对方身下**——钻进去的那截为什么看不见：本体同色
+    不透明（盖住对方本体看不出来），描边在 ``Interlace Case`` 这张独立图层里、永远在
+    所有本体下面（深压深也看不出来）。于是可以取"贴平"的解::
 
         d = (reach - gap) * (1 - cosθ) / sinθ = (reach - gap) * tan(θ/2)
 
-    钻进去的那一截为什么看不见：本体同色不透明（盖住对方本体看不出来），描边在
-    ``Interlace Case`` 这张独立图层里、永远在所有本体下面（深压深也看不出来）。露在
-    外面的轮廓因此精确与对方边缘重合，斜交叉也能用平头。代价只剩"本体咬掉对方描边环
-    上一小块"（45° 实测 0.53 reach²，比零重叠方案里圆头已经咬的 0.23 略大）。
-    ``sinθ < TUCK_SIN`` 时钻得没完没了，退回零重叠的圆头。
+    但**只有描边层能这么切**：本体比描边窄，它一旦伸进对方 footprint，就必然从对方那圈
+    描边环上咬掉一块（斜交叉的切面永远躲不开），遮挡关系当场丢失。所以本体用
+    ``flush=False``：退回零重叠的 ``reach / tan(θ/2)``，留下的缺口由
+    :func:`_tip_patch` 补成一条沿对方边缘的多边形边。90° 上两条式子相等，本体也贴平。
+
+    ``sinθ < TUCK_SIN`` 时钻得没完没了，两边都退回零重叠的圆头。
     """
     sine = max(sin_angle, SIN_FLOOR)
     cosine = math.sqrt(max(0.0, 1.0 - sine * sine))
     if tuck and sin_angle >= TUCK_SIN:
-        return max(0.0, reach - gap) * (1.0 - cosine) / sine, True
+        if flush:
+            return max(0.0, reach - gap) * (1.0 - cosine) / sine, True
+        return reach * (1.0 + cosine) / sine, True
     if not tuck and sin_angle >= FLAT_CAP_SIN:
         return reach * (1.0 + cosine) / sine, True
     return reach + (reach + gap) / sine, False
+
+
+def _clip_halfplane(polygon, normal, offset):
+    """凸多边形按半平面 ``p·normal >= offset`` 裁一刀（Sutherland–Hodgman）。"""
+    if not polygon:
+        return []
+    out = []
+    count = len(polygon)
+    for i in range(count):
+        a = polygon[i]
+        b = polygon[(i + 1) % count]
+        da = a[0] * normal[0] + a[1] * normal[1] - offset
+        db = b[0] * normal[0] + b[1] * normal[1] - offset
+        if da >= 0.0:
+            out.append(a)
+            if db < 0.0:
+                ratio = da / (da - db)
+                out.append((a[0] + (b[0] - a[0]) * ratio, a[1] + (b[1] - a[1]) * ratio))
+        elif db >= 0.0:
+            ratio = da / (da - db)
+            out.append((a[0] + (b[0] - a[0]) * ratio, a[1] + (b[1] - a[1]) * ratio))
+    return out
+
+
+def _tip_patch(here, towards, cut, half_width, reach, axes):
+    """切口端头那块"多边形边"：把本体沿**对方带子的边缘**裁齐。
+
+    笔划的端头只能垂直于自己，而对方边缘是斜的——斜交叉上两者必然错开：要么退到远处
+    留一个缺口，要么压进去把对方那圈描边咬断。这个多边形把缺口补成一条斜边，贴平与
+    遮挡就能同时成立（等同布尔多边形方案里的那一刀）。
+
+    ``here`` 交叉点，``towards`` 从交叉点指向**本体材料内部**的单位向量，``cut`` 该端
+    的切口距离（沿 ``towards`` 量），``axes`` 这个交叉点上其它通过段的方向（要被让开的
+    那几根带子）。返回世界坐标的凸多边形；缺口可以忽略时返回 ``None``。
+    """
+    if half_width <= 0.0 or reach <= 0.0 or not axes:
+        return None
+    normal = (-towards[1], towards[0])
+    far = cut + half_width  # 往材料那边多伸半个带宽，与笔划端头叠住，免得留缝
+    polygon = [
+        (0.0, -half_width),
+        (far, -half_width),
+        (far, half_width),
+        (0.0, half_width),
+    ]
+    for axis in axes:
+        side = (-axis[1], axis[0])
+        # 往本体这一侧取法线，约束就只剩一条半平面：(p - here)·side >= reach
+        if towards[0] * side[0] + towards[1] * side[1] < 0.0:
+            side = (-side[0], -side[1])
+        normal_local = (
+            towards[0] * side[0] + towards[1] * side[1],
+            normal[0] * side[0] + normal[1] * side[1],
+        )
+        polygon = _clip_halfplane(polygon, normal_local, reach)
+        if len(polygon) < 3:
+            return None
+    if min(point[0] for point in polygon) > cut - TIP_MIN * reach:
+        return None  # 切口本来就贴着对方边缘（90°），没什么可补
+    return [
+        (here[0] + s * towards[0] + q * normal[0], here[1] + s * towards[1] + q * normal[1])
+        for s, q in polygon
+    ]
 
 
 # --- 主流程 ----------------------------------------------------------------
@@ -648,7 +735,16 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
                 # 票数不够、没能顺带满足"沿带子交替"的通过段（奇数环必然有）
                 result.mismatches += 1
 
-    for sidx, strand in enumerate(strands):
+    # 两套切口：外廓（描边层，贴平对方边缘）与本体（退出对方 footprint，缺口交给补片）。
+    # 90° 上两者完全相同，所以只有 tuck 且描边确实比本体宽时才跑第二遍。
+    stride = len(strands)
+    passes = 2 if (tuck and 0.0 < radius < reach) else 1
+    for step in range(stride * passes):
+        flush = (step // stride) == 0
+        strand = strands[step % stride]
+        paths = result.paths if flush else result.body_paths
+        caps_out = result.caps if flush else result.body_caps
+        piece_links = result.links if flush else []
         nodes = strand["nodes"]
         walked = strand["edges"]
         count = len(nodes)
@@ -680,10 +776,29 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
                                   crossings[node_id], pid_node, pid_ends, points, edges)
                 sin_out = _min_sin(pid, _norm(_sub(points[next_node], here)),
                                    crossings[node_id], pid_node, pid_ends, points, edges)
-                d_in, flat_in = _end_cut(reach, gap, sin_in, tuck)
-                d_out, flat_out = _end_cut(reach, gap, sin_out, tuck)
+                d_in, flat_in = _end_cut(reach, gap, sin_in, tuck, flush)
+                d_out, flat_out = _end_cut(reach, gap, sin_out, tuck, flush)
                 cuts.append((cum[i] - d_in, cum[i] + d_out, node_id, flat_in, flat_out))
-                result.cuts += 1
+                if flush:
+                    result.cuts += 1
+                else:
+                    # 本体退出对方 footprint 留下的缺口：按对方边缘补一块多边形
+                    axes = [
+                        _passage_axis(other, pid_node, pid_ends, points, edges)
+                        for other in crossings[node_id]
+                        if other != pid
+                    ]
+                    for towards, d_end, flat in (
+                        (_sub(points[prev_node], here), d_in, flat_in),
+                        (_sub(points[next_node], here), d_out, flat_out),
+                    ):
+                        if not flat:
+                            continue
+                        patch = _tip_patch(
+                            here, _norm(towards), d_end, radius, reach, axes
+                        )
+                        if patch is not None:
+                            result.tips.append(patch)
 
         if not cuts:
             keep = [(0.0, total)]
@@ -724,7 +839,10 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
                 if drop is None:
                     break
                 del cuts[drop]
-                result.pruned += 1
+                if flush:
+                    result.pruned += 1
+                else:
+                    result.body_pruned += 1
                 keep = _subtract(total, cuts, closed)
 
         # 闭合带子被切出一个跨接缝的整段时，_subtract 会给出两段，这里合并回去
@@ -743,22 +861,22 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
                 piece = _slice(ring, cum, max(0.0, start), min(total, end))
                 if len(piece) < 2:
                     continue
-            piece_id = len(result.paths)
+            piece_id = len(paths)
             flat_start = flat_end = False
             for cut in cuts:
                 if abs(min(max(cut[0], 0.0), total) - end) < 1e-9:
                     flat_end = cut[3]  # 这一段结束在切口的"进侧"上
                 elif abs(min(max(cut[1], 0.0), total) - start) < 1e-9:
                     flat_start = cut[4]  # 这一段从切口的"出侧"起步
-            result.paths.append((piece, unbroken))
-            result.caps.append((flat_start, flat_end))
+            paths.append((piece, unbroken))
+            caps_out.append((flat_start, flat_end))
             emitted.append((start, end, piece_id))
             # 端头正好落在交叉点上 ⇒ 这一段是"压在下面"的
             for where, at_end in ((start, True), (end, False)):
                 for cut in cuts:
                     value = cut[1] if at_end else cut[0]
                     if abs(min(max(value, 0.0), total) - where) < 1e-9:
-                        result.links.append((cut[2], piece_id, True))
+                        piece_links.append((cut[2], piece_id, True))
                         break
 
         # 交叉点落在某一段的内部 ⇒ 这一段是"压在上面"的（绘制次序约束的另一半）
@@ -773,7 +891,7 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
             where = cum[i]
             for start, end, piece_id in emitted:
                 if start - 1e-9 <= where <= end + 1e-9:
-                    result.links.append((node_id, piece_id, False))
+                    piece_links.append((node_id, piece_id, False))
                     break
 
     return result
