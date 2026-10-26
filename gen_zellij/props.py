@@ -9,8 +9,15 @@ import bpy
 
 from . import gp
 from .design import FOCUS_VALUES
+from .palette import SILK, hex_to_rgb
 from .rng import SEED_MAX
-from .scene import LAYER_FILLS, LAYER_LINES, LAYER_OUTLINES, LAYER_TILING
+from .scene import (
+    LAYER_FILLS,
+    LAYER_INTERLACE,
+    LAYER_LINES,
+    LAYER_OUTLINES,
+    LAYER_TILING,
+)
 
 __all__ = [
     "DENSITY_ITEMS",
@@ -22,6 +29,9 @@ __all__ = [
     "register",
     "unregister",
 ]
+
+#: 编织带的默认色：色板的绢白（sRGB 0..1）—— 真迹里石膏勾缝就是用这个色。
+HEX_SILK = hex_to_rgb(SILK)
 
 #: Density 档位（面板顺序）。值以字符串存进枚举，取用时 ``int()``。
 DENSITY_ITEMS = [
@@ -44,6 +54,8 @@ DESIGN_KEYS = (
     "gen_zellij_canvas",
     "gen_zellij_margin",
     "gen_zellij_outline_radius",
+    "gen_zellij_interlace_radius",
+    "gen_zellij_interlace_gap",
 )
 
 #: 焦点特征的**显示名**：标识（存进文件、写进对象参数）保持 ASCII 稳定，
@@ -53,10 +65,11 @@ FOCUS_LABELS = {
     "Block4x4": "Block 4×4",
 }
 
-#: 图层 → 控制可见性的属性名（四个图层永远都写进对象，只是隐藏与否）。
+#: 图层 → 控制可见性的属性名（图层永远都写进对象，只是隐藏与否）。
 LAYER_VISIBILITY = {
     LAYER_FILLS: "show_fills",
     LAYER_OUTLINES: "show_outlines",
+    LAYER_INTERLACE: "show_interlace",
     LAYER_TILING: "show_tiling",
     LAYER_LINES: "show_lines",
 }
@@ -189,7 +202,15 @@ class GenZellijSettings(bpy.types.PropertyGroup):
 
     show_outlines: bpy.props.BoolProperty(  # type: ignore[valid-type]
         name="块轮廓",
-        description="与填充同一套几何的描边层（颜色由填充色派生）；可以单独隐藏或替换",
+        description="与填充同一套几何的描边层（颜色由填充色派生）；和编织只留一个就够",
+        default=False,
+        update=_apply_visibility,
+    )
+
+    show_interlace: bpy.props.BoolProperty(  # type: ignore[valid-type]
+        name="编织",
+        description="把同一套色块边网编成上下交替的带子：交叉点上交替压下，"
+        "压下的那一端切掉缺口（缺口宽度按带宽算，所以改带宽要重新生成）",
         default=True,
         update=_apply_visibility,
     )
@@ -219,6 +240,41 @@ class GenZellijSettings(bpy.types.PropertyGroup):
         subtype="DISTANCE",
         unit="LENGTH",
         update=_apply_stroke_widths,
+    )
+
+    interlace_radius: bpy.props.FloatProperty(  # type: ignore[valid-type]
+        name="编织带宽",
+        description="编织带子的笔划半径（总宽 = 2×半径）；缺口按带宽算，属于几何，"
+        "改它必须重新生成。画布 10 时 0.018 左右大致是绢白勾缝的粗细",
+        default=0.018,
+        min=0.0,
+        precision=4,
+        subtype="DISTANCE",
+        unit="LENGTH",
+        update=_mark_dirty,
+    )
+
+    interlace_gap: bpy.props.FloatProperty(  # type: ignore[valid-type]
+        name="编织间隙",
+        description="缺口在“刚好贴住上方带子”之外再多留的量，单位是带宽的倍数；"
+        "0 = 压下的带子正好顶到上方带子的边，越大缝越明显",
+        default=0.25,
+        min=0.0,
+        soft_max=2.0,
+        precision=2,
+        update=_mark_dirty,
+    )
+
+    interlace_color: bpy.props.FloatVectorProperty(  # type: ignore[valid-type]
+        name="编织色",
+        description="编织带子的颜色（一根带子通常横跨多个色块，所以是单色而不是按块派生）。"
+        "默认取色板的绢白——和真迹里的石膏勾缝一个道理",
+        size=3,
+        subtype="COLOR_GAMMA",
+        default=HEX_SILK,
+        min=0.0,
+        max=1.0,
+        update=_mark_dirty,
     )
 
     tiling_radius: bpy.props.FloatProperty(  # type: ignore[valid-type]
@@ -326,16 +382,27 @@ class GenZellijSettings(bpy.types.PropertyGroup):
         return {
             LAYER_FILLS: 0.0,
             LAYER_OUTLINES: float(self.outline_radius),
+            LAYER_INTERLACE: float(self.interlace_radius),
             LAYER_TILING: float(self.tiling_radius),
             LAYER_LINES: float(self.line_radius),
         }
 
     def layer_colors(self) -> dict:
-        """调试图层（Tiling / Lines）的描边色覆盖。"""
+        """面板可覆盖的描边色：编织层与两个调试图层。"""
         return {
+            LAYER_INTERLACE: tuple(self.interlace_color),
             LAYER_TILING: tuple(self.tiling_color),
             LAYER_LINES: tuple(self.line_color),
         }
+
+    def weave_style(self):
+        """编织的几何参数（带宽进几何，见 ``scene.build_layers``）。"""
+        from .scene import WeaveStyle
+
+        return WeaveStyle(
+            half_width=float(self.interlace_radius),
+            gap_ratio=float(self.interlace_gap),
+        )
 
 
 def register():

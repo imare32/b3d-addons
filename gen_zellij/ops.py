@@ -43,6 +43,8 @@ def _build(settings):
             design,
             size=float(settings.canvas),
             margin=float(settings.margin),
+            # 编织的缺口是几何：带宽 / 间隙进这里，由 build_layers 一次算好
+            weave_style=settings.weave_style(),
         )
         if any(shape.fill is not None for shape in shapes):
             return shapes, seed, attempt + 1
@@ -131,6 +133,8 @@ def _store(settings, obj, seed: int) -> None:
     obj[DESIGN_KEYS[4]] = float(settings.canvas)
     obj[DESIGN_KEYS[5]] = float(settings.margin)
     obj[DESIGN_KEYS[6]] = float(settings.outline_radius)
+    obj[DESIGN_KEYS[7]] = float(settings.interlace_radius)
+    obj[DESIGN_KEYS[8]] = float(settings.interlace_gap)
 
 
 class GENZ_OT_generate(bpy.types.Operator):
@@ -263,6 +267,11 @@ class GENZ_OT_sync_from_object(bpy.types.Operator):
         settings.canvas = float(obj[keys[4]])
         settings.margin = float(obj[keys[5]])
         settings.outline_radius = float(obj[keys[6]])
+        # 旧对象没有这两项（编织是后加的），缺了就保留面板当前值
+        if keys[7] in obj:
+            settings.interlace_radius = float(obj[keys[7]])
+        if keys[8] in obj:
+            settings.interlace_gap = float(obj[keys[8]])
         settings.dirty = False
         self.report(
             {"INFO"}, f"read back seed={settings.seed} density={settings.density}"

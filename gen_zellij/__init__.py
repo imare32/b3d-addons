@@ -7,6 +7,7 @@
     design  —— 构造线晶格、瓷砖生长、签名匹配、簇合并
     fillers —— ``fillers.json`` 图案库的惰性读取
     scene   —— 输出契约：``build_layers()`` 得到 图层名 → ``Shape`` 列表
+    weave   —— 把色块边网编成上下交替的带子（缺口在几何里）
     geom    —— 点 / 仿射矩阵 / 包围盒适配 / 轮廓合并
     rng     —— ``Mulberry32``，同 seed 同结果
 
@@ -40,6 +41,7 @@ from .design import (
 from .fillers import clusters, has, load, signatures
 from .scene import (
     LAYER_FILLS,
+    LAYER_INTERLACE,
     LAYER_LINES,
     LAYER_ORDER,
     LAYER_OUTLINES,
@@ -51,10 +53,12 @@ from .scene import (
     VIEW_TILING,
     VIEW_ZELLIJ,
     Shape,
+    WeaveStyle,
     build_layers,
     build_shapes,
     derived_stroke,
 )
+from .weave import Weave, build_weave
 
 __all__ = [
     # design
@@ -85,6 +89,7 @@ __all__ = [
     "VIEW_POLYGONS",
     "LAYER_FILLS",
     "LAYER_OUTLINES",
+    "LAYER_INTERLACE",
     "LAYER_TILING",
     "LAYER_LINES",
     "LAYER_ORDER",
@@ -92,6 +97,10 @@ __all__ = [
     "derived_stroke",
     "build_shapes",
     "build_layers",
+    # weave
+    "Weave",
+    "WeaveStyle",
+    "build_weave",
 ]
 
 

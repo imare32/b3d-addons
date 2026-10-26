@@ -1,0 +1,559 @@
+"""编织：把 motif 边网变成上下交替的带子。
+
+``Outlines`` 层原来给每个色块的轮廓各画一条闭合笔划；编织要的是另一件事——把**整张图的
+边网**看成若干根带子，在结点处决定谁压谁，再把"压在下面"的那一端切掉一个缺口。
+
+判据与几何无关：over/under 是挂在"顶点 + 边端"上的组合状态。只要一个顶点能配对出两条
+以上"直通"的路径，那里就是交叉点。做法照抄 Alhambra 的 ``interlace`` 图层：顶点出边按
+角度排序 → 绕一圈交替 → 沿带子走到下一处交叉时取反。
+
+三条硬约束（都直接决定观感）：
+
+* **共享边只能是一条带子**：相邻色块共用一条缝，不去重就会有两条带子争同一段，
+  over/under 立刻自相矛盾（去重键与 ``scene._edge_key`` 一致：端点量化后无序比较）；
+* **带子 ≠ 多边形**：带子是"穿过结点时转角最小的路径"，闭合色块轮廓只是它的边料；
+  顶点配对时按"最接近反向"贪心，转角超过 90° 的不配（配不上就是带子末端）；
+* **不靠绘制顺序**：over/under 关系里存在环（A 压 B、B 压 C、C 压 A），任何"分两层、
+  一层压另一层"都排不出全局序，所以必须把下面的带子真的切掉。
+
+切多少由带宽决定（:func:`_cut_distance`）：切到"圆头正好贴住上方带子的边缘"为止，
+所以**带宽是几何参数**，改它必须重新生成。``gap`` 只在这个临界值之外再加一圈。
+
+纯 Python，不 import bpy；结果与随机流无关（同 seed 必然同结果）。
+"""
+
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass, field
+
+__all__ = ["Point", "Weave", "WeaveStyle", "build_weave"]
+
+Point = tuple[float, float]
+
+#: 端点量化位数：世界单位下约 1e-4，与 ``scene`` 的边去重、``_dedupe`` 同一量级。
+DIGITS = 4
+
+#: 交叉角正弦的下限：8 方向网格里最小是 45°（0.707），留一点余量给退化情况，
+#: 免得 ``1/sin`` 把缺口放大到吃掉整条带子。
+SIN_FLOOR = 0.5
+
+#: 短于 ``STUB * 半径`` 的残段直接丢掉：它只会画成一个圆点。
+STUB = 0.5
+
+#: 短于 ``PRUNE * 半径`` 的残段会被"修剪"掉：连着的那个缺口收回，两根带子叠在一起。
+#: 一颗浮着的小珠子比"这里不编"难看得多，而且同色不透明时叠画看不出来。
+PRUNE = 2.0
+
+#: 修剪的迭代次数：每轮收回一刀，收敛极快，留几轮兜底。
+_PRUNE_PASSES = 8
+
+
+@dataclass(frozen=True, slots=True)
+class WeaveStyle:
+    """编织的外观参数（都是世界单位 / 无量纲比率）。"""
+
+    #: 带子半宽（= 笔划半径，总宽 = 2×）。
+    half_width: float = 0.025
+    #: 缺口在"刚好贴住上方带子"之外再多留的量，单位是**带宽**（half_width 的倍数）。
+    gap_ratio: float = 0.25
+
+
+@dataclass(slots=True)
+class Weave:
+    """一次编织的结果：可以直接变成 ``scene.Shape`` 的点列，外加统计。"""
+
+    #: ``(点列, 是否闭合)``；闭合只出现在整根带子一处交叉都没有的时候。
+    paths: list[tuple[list[Point], bool]] = field(default_factory=list)
+    nodes: int = 0
+    edges: int = 0
+    strands: int = 0
+    crossings: int = 0
+    cuts: int = 0
+    #: 被收回的缺口数（残段太短，宁可不编，见 ``PRUNE``）。
+    pruned: int = 0
+    #: "没能沿带子交替"的通过段数。奇数环（三角形色块）上必然出现，**不是错误**：
+    #: 每个交叉点仍然严格一上一下（见 ``build_weave`` 里的说明）。
+    mismatches: int = 0
+
+
+# --- 小工具 ---------------------------------------------------------------
+
+
+def _sub(a: Point, b: Point) -> Point:
+    return (a[0] - b[0], a[1] - b[1])
+
+
+def _norm(v: Point) -> Point:
+    size = math.hypot(v[0], v[1])
+    if size < 1e-12:
+        return (0.0, 0.0)
+    return (v[0] / size, v[1] / size)
+
+
+def _sin_between(u: Point, w: Point) -> float:
+    """两条**线**的夹角正弦（0 = 平行，1 = 垂直）。"""
+    return abs(u[0] * w[1] - u[1] * w[0])
+
+
+def _dist(a: Point, b: Point) -> float:
+    return math.hypot(a[0] - b[0], a[1] - b[1])
+
+
+# --- 图 --------------------------------------------------------------------
+
+
+def _edge_network(polygons):
+    """色块多边形 → 去重后的无向边网（共享边只留一条）。"""
+    index: dict[tuple[float, float], int] = {}
+    points: list[Point] = []
+    edges: list[tuple[int, int]] = []
+    seen: set[tuple[int, int]] = set()
+
+    def node(point) -> int:
+        key = (round(point[0], DIGITS), round(point[1], DIGITS))
+        found = index.get(key)
+        if found is None:
+            found = len(points)
+            index[key] = found
+            points.append(key)
+        return found
+
+    for polygon in polygons:
+        count = len(polygon)
+        if count < 3:
+            continue
+        ids = [node(point) for point in polygon]
+        for i in range(count):
+            a = ids[i]
+            b = ids[(i + 1) % count]
+            if a == b:
+                continue
+            key = (a, b) if a < b else (b, a)
+            if key in seen:
+                continue
+            seen.add(key)
+            edges.append(key)
+    return points, edges
+
+
+def _pair_edges(incident, points, edges):
+    """每个顶点上把出边两两配成"直通"——配对表就是带子的走向。"""
+    partner: dict[tuple[int, int], int] = {}
+    for node_id, ends in enumerate(incident):
+        if len(ends) < 2:
+            continue
+        origin = points[node_id]
+        dirs = []
+        for eid in ends:
+            a, b = edges[eid]
+            dirs.append(_norm(_sub(points[b if a == node_id else a], origin)))
+
+        candidates = []
+        for i in range(len(ends)):
+            for j in range(i + 1, len(ends)):
+                cos = dirs[i][0] * dirs[j][0] + dirs[i][1] * dirs[j][1]
+                if cos > 0.0:
+                    # 同向（夹角 < 90°）：带子在这里"折返"，不成对
+                    continue
+                candidates.append((_sin_between(dirs[i], dirs[j]), i, j))
+        candidates.sort()
+
+        used = [False] * len(ends)
+        for _straightness, i, j in candidates:
+            if used[i] or used[j]:
+                continue
+            used[i] = used[j] = True
+            partner[(node_id, ends[i])] = ends[j]
+            partner[(node_id, ends[j])] = ends[i]
+    return partner
+
+
+def _trace(edges, partner):
+    """按配对表追带子：每个顶点都直通就一直走下去，配不上就在那里收尾。"""
+    used = [False] * len(edges)
+    strands = []
+
+    for eid0 in range(len(edges)):
+        if used[eid0]:
+            continue
+        start, far = edges[eid0]
+        nodes = [start, far]
+        walked = [eid0]
+        used[eid0] = True
+        closed = False
+
+        # 向右
+        cur, in_edge = far, eid0
+        while True:
+            nxt = partner.get((cur, in_edge))
+            if nxt is None:
+                break
+            if used[nxt]:
+                closed = nxt == eid0
+                break
+            used[nxt] = True
+            a, b = edges[nxt]
+            cur = b if a == cur else a
+            nodes.append(cur)
+            walked.append(nxt)
+            in_edge = nxt
+
+        # 向左（闭合的话右边已经绕回来了，不用再走）
+        if not closed:
+            cur, in_edge = start, eid0
+            while True:
+                nxt = partner.get((cur, in_edge))
+                if nxt is None or used[nxt]:
+                    break
+                used[nxt] = True
+                a, b = edges[nxt]
+                cur = b if a == cur else a
+                nodes.insert(0, cur)
+                walked.insert(0, nxt)
+                in_edge = nxt
+
+        if closed:
+            # 绕回起点时末节点是重复的；边表里已经含"收口"的那条边，长度因此对得上
+            while len(nodes) > 1 and nodes[0] == nodes[-1]:
+                nodes.pop()
+        strands.append({"nodes": nodes, "edges": walked, "closed": closed})
+    return strands
+
+
+# --- 弧长 ------------------------------------------------------------------
+
+
+def _cumulative(points):
+    cum = [0.0]
+    for a, b in zip(points, points[1:]):
+        cum.append(cum[-1] + _dist(a, b))
+    return cum
+
+
+def _at(points, cum, where: float) -> Point:
+    """弧长 ``where`` 处的插值点。"""
+    if where <= 0.0:
+        return points[0]
+    if where >= cum[-1]:
+        return points[-1]
+    # 节点数不多（几十），线性扫比 bisect 更省事也够快
+    for i in range(1, len(cum)):
+        if cum[i] >= where:
+            span = cum[i] - cum[i - 1]
+            ratio = (where - cum[i - 1]) / span if span > 1e-12 else 0.0
+            a, b = points[i - 1], points[i]
+            return (a[0] + (b[0] - a[0]) * ratio, a[1] + (b[1] - a[1]) * ratio)
+    return points[-1]
+
+
+def _slice(points, cum, start: float, end: float) -> list[Point]:
+    """取 ``[start, end]`` 这段弧长对应的折线（端点插值，中间节点原样保留）。"""
+    out = [_at(points, cum, start)]
+    for i in range(1, len(points) - 1):
+        if start < cum[i] < end:
+            out.append(points[i])
+    tail = _at(points, cum, end)
+    if _dist(out[-1], tail) > 1e-9:
+        out.append(tail)
+    return out
+
+
+def _subtract(total: float, cuts, closed: bool):
+    """从 ``[0, total]`` 里减掉切口区间，返回保留的若干段。"""
+    merged: list[list[float]] = []
+    for start, end in sorted(cuts):
+        start = max(0.0, start)
+        end = min(total, end)
+        if end - start <= 0.0:
+            continue
+        if merged and start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+
+    # 闭合带子的切口跨过接缝时，首尾两段其实是同一段，先接起来
+    if closed and len(merged) > 1 and merged[0][0] <= 0.0 and merged[-1][1] >= total:
+        merged[0][0] = merged[-1][0] - total
+        merged.pop()
+
+    keep = []
+    cursor = 0.0
+    for start, end in merged:
+        if start > cursor:
+            keep.append((cursor, start))
+        cursor = max(cursor, end)
+    if cursor < total:
+        keep.append((cursor, total))
+    return keep
+
+
+def _cut_distance(radius: float, gap: float, sin_angle: float) -> float:
+    """压下去那一端要往回切多远。
+
+    笔划端点是圆头：GP 会在末点之外再糊出半个笔宽，所以"切到 ``d``"实际是"带子的
+    圆头尖停在 ``d - radius`` 处"。要让这个尖正好贴住上方带子的边缘::
+
+        (d - radius) * sin(θ) >= radius + gap
+        d = radius + (radius + gap) / sin(θ)
+
+    ``sin(θ)`` 取该顶点上**最斜**的那根交叉带（缺口取最大，宁可多切也不要戳出来）。
+    """
+    return radius + (radius + gap) / max(sin_angle, SIN_FLOOR)
+
+
+# --- 主流程 ----------------------------------------------------------------
+
+
+def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
+    """把一组闭合色块多边形编成带子。
+
+    ``polygons`` 是**世界坐标**下的点列（``scene`` 里已经过仿射与去重）；返回的
+    ``paths`` 同样在世界坐标里，可直接变成开口 ``Shape``。
+    """
+    style = style or WeaveStyle()
+    radius = max(0.0, float(style.half_width))
+    gap = max(0.0, float(style.gap_ratio)) * radius
+
+    points, edges = _edge_network(polygons)
+    result = Weave(nodes=len(points), edges=len(edges))
+    if not edges:
+        return result
+
+    incident: list[list[int]] = [[] for _ in points]
+    for eid, (a, b) in enumerate(edges):
+        incident[a].append(eid)
+        incident[b].append(eid)
+
+    partner = _pair_edges(incident, points, edges)
+    strands = _trace(edges, partner)
+    result.strands = len(strands)
+
+    # 通过段：一个顶点上被配对起来的两条边，就是一根带子在那里穿过
+    pid_at: dict[tuple[int, int], int] = {}
+    pid_node: list[int] = []
+    pid_ends: list[tuple[int, int]] = []
+    for node_id, ends in enumerate(incident):
+        for eid in ends:
+            other = partner.get((node_id, eid))
+            if other is None or other < eid:
+                continue
+            pid = len(pid_node)
+            pid_node.append(node_id)
+            pid_ends.append((eid, other))
+            pid_at[(node_id, eid)] = pid
+            pid_at[(node_id, other)] = pid
+
+    by_node: dict[int, list[int]] = {}
+    for pid, node_id in enumerate(pid_node):
+        by_node.setdefault(node_id, []).append(pid)
+    # 两根以上带子穿过同一个顶点才算交叉；度 ≤ 3 的 T 结点只有一个通过段，自然不断开
+    crossings = {node: pids for node, pids in by_node.items() if len(pids) > 1}
+    result.crossings = len(crossings)
+
+    # 每根带子的走向（用于给"第几处交叉"编号）
+    pid_strand = [-1] * len(pid_node)
+    pid_order = [0] * len(pid_node)
+    cursor = [0] * len(strands)
+    for sidx, strand in enumerate(strands):
+        nodes = strand["nodes"]
+        walked = strand["edges"]
+        count = len(nodes)
+        indices = range(count) if strand["closed"] else range(1, count - 1)
+        for i in indices:
+            node_id = nodes[i]
+            in_edge = walked[i - 1] if i > 0 else walked[-1]
+            pid = pid_at.get((node_id, in_edge))
+            if pid is None or pid_at.get((node_id, walked[i])) != pid:
+                continue
+            pid_strand[pid] = sidx
+            if node_id in crossings:
+                pid_order[pid] = cursor[sidx]
+                cursor[sidx] += 1
+
+    # --- over/under ---------------------------------------------------------
+    #
+    # 硬约束只有一条：**同一个交叉点上相邻的两根带子必须一上一下**（绕顶点交替）。
+    # 这保证每个交叉点正好一根压上、一根压下，任何情况下都不会出现两根带子重叠或
+    # 两边同时缺口的破绽——这是"看起来像编织"的底线，必须无条件满足。
+    #
+    # "沿带子走到下一处交叉就取反"只能当**偏好**：色块拼图里有三角形/五边形的环，
+    # 奇数个交叉点绕一圈回来本来就不可能交替（绕一圈要翻转奇数次），硬当约束会把
+    # 底线破掉。所以先用 BFS 沿带子传播一个理想相位（异或方程，奇环按先到的赋值
+    # 放过去），再在每个顶点上用**多数票**选"从哪一条开始压上"的起点：
+    # 每个通过段投票给它自己想要的起点，票多的那个就是该顶点的起点。
+    phase = [-1] * len(strands)
+    links: list[list[tuple[int, int]]] = [[] for _ in strands]
+    ordered_crossings: dict[int, list[int]] = {}
+    for node_id, pids in crossings.items():
+        pids = sorted(
+            pids, key=lambda pid: _passage_angle(pid, pid_node, pid_ends, points, edges)
+        )
+        ordered_crossings[node_id] = pids
+        for a, b in zip(pids, pids[1:]):
+            sa, sb = pid_strand[a], pid_strand[b]
+            if sa < 0 or sb < 0 or sa == sb:
+                continue  # 自交：相位方程退化成恒等式，跳过
+            flip = 1 ^ (pid_order[a] & 1) ^ (pid_order[b] & 1)
+            links[sa].append((sb, flip))
+            links[sb].append((sa, flip))
+
+    for seed in range(len(strands)):
+        if phase[seed] >= 0:
+            continue
+        phase[seed] = 0
+        stack = [seed]
+        while stack:
+            current = stack.pop()
+            for other, flip in links[current]:
+                want = phase[current] ^ flip
+                if phase[other] < 0:
+                    phase[other] = want
+                    stack.append(other)
+
+    def _wanted(pid: int) -> int:
+        """这根带子希望在自己这个通过段上是什么状态（0 = 压下，1 = 压上）。"""
+        strand = pid_strand[pid]
+        if strand < 0:
+            return 0
+        return int(phase[strand] ^ (pid_order[pid] & 1))
+
+    is_over = [False] * len(pid_node)
+    for node_id, pids in ordered_crossings.items():
+        votes = 0
+        for slot, pid in enumerate(pids):
+            votes += 1 if (_wanted(pid) ^ (slot & 1)) else -1
+        base = 1 if votes > 0 else 0
+        for slot, pid in enumerate(pids):
+            is_over[pid] = bool(base ^ (slot & 1))
+            if int(is_over[pid]) != _wanted(pid):
+                # 票数不够、没能顺带满足"沿带子交替"的通过段（奇数环必然有）
+                result.mismatches += 1
+
+    for sidx, strand in enumerate(strands):
+        nodes = strand["nodes"]
+        walked = strand["edges"]
+        count = len(nodes)
+        closed = strand["closed"]
+        raw = [points[node] for node in nodes]
+        ring = raw + [raw[0]] if closed else raw
+        cum = _cumulative(ring)
+        total = cum[-1]
+        if total <= 0.0:
+            continue
+
+        cuts: list[tuple[float, float]] = []
+        if radius > 0.0:
+            indices = range(count) if closed else range(1, count - 1)
+            for i in indices:
+                node_id = nodes[i]
+                if node_id not in crossings:
+                    continue
+                in_edge = walked[i - 1] if i > 0 else walked[-1]
+                pid = pid_at.get((node_id, in_edge))
+                if pid is None or is_over[pid]:
+                    continue
+
+                here = points[node_id]
+                prev_node = nodes[i - 1] if i > 0 else nodes[-1]
+                next_node = nodes[(i + 1) % count]
+                sin_in = _min_sin(pid, _norm(_sub(here, points[prev_node])),
+                                  crossings[node_id], pid_node, pid_ends, points, edges)
+                sin_out = _min_sin(pid, _norm(_sub(points[next_node], here)),
+                                   crossings[node_id], pid_node, pid_ends, points, edges)
+                d_in = _cut_distance(radius, gap, sin_in)
+                d_out = _cut_distance(radius, gap, sin_out)
+                cuts.append((cum[i] - d_in, cum[i] + d_out))
+                result.cuts += 1
+
+        if not cuts:
+            result.paths.append((raw, closed))
+            continue
+
+        if closed:
+            wrapped = []
+            for start, end in cuts:
+                if end > total:
+                    wrapped.append((start, total))
+                    wrapped.append((0.0, end - total))
+                elif start < 0.0:
+                    wrapped.append((0.0, end))
+                    wrapped.append((total + start, total))
+                else:
+                    wrapped.append((start, end))
+            cuts = wrapped
+
+        keep = _subtract(total, cuts, closed)
+
+        # 残段修剪：缺口把一段切得比笔宽还短时，画出来就是一颗浮着的"珠子"，比"这里不编"
+        # 难看得多。所以把切出这颗珠子的那一刀收回去：那个交叉点两根带子直接叠在一起，
+        # 同色不透明的情况下完全看不出来（代价是该点失去上下之分）。
+        if keep and radius > 0.0:
+            for _ in range(_PRUNE_PASSES):
+                bead = None
+                for start, end in keep:
+                    if start > 0.0 and end < total and end - start < PRUNE * radius:
+                        bead = start
+                        break
+                if bead is None:
+                    break
+                drop = None
+                for index, (_start, end) in enumerate(cuts):
+                    if abs(end - bead) < 1e-9:
+                        drop = index
+                        break
+                if drop is None:
+                    break
+                del cuts[drop]
+                result.pruned += 1
+                keep = _subtract(total, cuts, closed)
+
+        # 闭合带子被切出一个跨接缝的整段时，_subtract 会给出两段，这里合并回去
+        if closed and len(keep) > 1 and keep[0][0] <= 0.0 and keep[-1][1] >= total:
+            head = keep.pop(0)
+            tail = keep.pop()
+            keep.append((tail[0], head[1] + total))
+
+        for start, end in keep:
+            if end - start < STUB * radius:
+                continue
+            piece = _slice(ring, cum, max(0.0, start), min(total, end))
+            if len(piece) >= 2:
+                result.paths.append((piece, False))
+
+    return result
+
+
+def _passage_angle(pid, pid_node, pid_ends, points, edges) -> float:
+    """通过段的走向角（绕顶点排序用）。"""
+    node_id = pid_node[pid]
+    origin = points[node_id]
+    dirs = []
+    for eid in pid_ends[pid]:
+        a, b = edges[eid]
+        dirs.append(_norm(_sub(points[b if a == node_id else a], origin)))
+    axis = _sub(dirs[0], dirs[1])  # 直通时 = 2×方向，转角时 = 两条边的对角线
+    return math.atan2(axis[1], axis[0])
+
+
+def _passage_axis(pid, pid_node, pid_ends, points, edges) -> Point:
+    node_id = pid_node[pid]
+    origin = points[node_id]
+    dirs = []
+    for eid in pid_ends[pid]:
+        a, b = edges[eid]
+        dirs.append(_norm(_sub(points[b if a == node_id else a], origin)))
+    return _norm(_sub(dirs[0], dirs[1]))
+
+
+def _min_sin(pid, direction, pids, pid_node, pid_ends, points, edges) -> float:
+    """``direction`` 与同一顶点上其它通过段之间夹角正弦的最小值。"""
+    worst = 1.0
+    for other in pids:
+        if other == pid:
+            continue
+        axis = _passage_axis(other, pid_node, pid_ends, points, edges)
+        if axis == (0.0, 0.0):
+            continue
+        worst = min(worst, _sin_between(direction, axis))
+    return worst

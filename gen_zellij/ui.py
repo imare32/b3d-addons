@@ -50,6 +50,8 @@ class GENZ_PT_main(bpy.types.Panel):
         row.operator("gen_zellij.generate", text=text, icon="MOD_BUILD")
         if settings.dirty and obj is not None:
             layout.label(text="参数已改，需重新生成", icon="INFO")
+        if settings.show_interlace:
+            layout.label(text="编织的缺口是几何：改带宽/间隙要重建", icon="INFO")
 
         # --- 图层 ---------------------------------------------------------
         box = layout.box()
@@ -63,6 +65,14 @@ class GENZ_PT_main(bpy.types.Panel):
         sub = row.row(align=True)
         sub.enabled = settings.show_outlines
         sub.prop(settings, "outline_radius", text="")
+
+        row = box.row(align=True)
+        row.prop(settings, "show_interlace", text="编织")
+        sub = row.row(align=True)
+        sub.enabled = settings.show_interlace
+        sub.prop(settings, "interlace_radius", text="")
+        sub.prop(settings, "interlace_gap", text="")
+        sub.prop(settings, "interlace_color", text="")
 
         row = box.row(align=True)
         row.prop(settings, "show_tiling", text="瓷砖线")

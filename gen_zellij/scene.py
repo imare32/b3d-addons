@@ -28,6 +28,7 @@ from .geom import (
     point_sub,
 )
 from .rng import Mulberry32
+from .weave import WeaveStyle, build_weave
 
 __all__ = [
     "Shape",
@@ -38,10 +39,12 @@ __all__ = [
     "VIEW_POLYGONS",
     "LAYER_FILLS",
     "LAYER_OUTLINES",
+    "LAYER_INTERLACE",
     "LAYER_TILING",
     "LAYER_LINES",
     "LAYER_ORDER",
     "STROKE_SATURATION",
+    "WeaveStyle",
     "derived_stroke",
     "build_shapes",
     "build_layers",
@@ -67,13 +70,20 @@ LINE_SAMPLES_PER_WIDTH = 320
 STROKE_SATURATION = 1.35
 
 #: 拓扑分类 → Grease Pencil 图层（后端按此分层，索引越大越靠上）。
-#: ``Fills`` 只有填充；``Outlines`` 是同一套几何的描边；``Tiling`` 是瓷砖分界线；
-#: ``Lines`` 是构造线。
+#: ``Fills`` 只有填充；``Outlines`` 是同一套几何的描边；``Interlace`` 是把同一套边网
+#: 编成上下交替的带子；``Tiling`` 是瓷砖分界线；``Lines`` 是构造线。
 LAYER_FILLS = "Fills"
 LAYER_OUTLINES = "Outlines"
+LAYER_INTERLACE = "Interlace"
 LAYER_TILING = "Tiling"
 LAYER_LINES = "Lines"
-LAYER_ORDER = (LAYER_FILLS, LAYER_OUTLINES, LAYER_TILING, LAYER_LINES)
+LAYER_ORDER = (
+    LAYER_FILLS,
+    LAYER_OUTLINES,
+    LAYER_INTERLACE,
+    LAYER_TILING,
+    LAYER_LINES,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -344,6 +354,19 @@ def build_shapes(
     return _apply(raw, _flip_matrix(canvas, margin))
 
 
+def _interlace_shapes(fills: list[Shape], style: WeaveStyle) -> list[Shape]:
+    """把填充分层的边网编成上下交替的带子（见 :mod:`weave`）。
+
+    输入是**已经变换到世界坐标、并去重过**的填充多边形：共享边只留一条，否则同一段缝
+    会被两根带子争，over/under 无法自洽。输出是开口折线，缺口已经在几何里。
+    """
+    result = build_weave([shape.points for shape in fills], style)
+    return [
+        Shape(points, None, BLACK, closed, LAYER_INTERLACE)
+        for points, closed in result.paths
+    ]
+
+
 def build_layers(
     design: Design,
     rng: Mulberry32 | None = None,
@@ -351,6 +374,7 @@ def build_layers(
     size: float = 1.0,
     margin: float = 0.0,
     allow_rotation: bool = False,
+    weave_style: WeaveStyle | None = None,
 ) -> list[Shape]:
     """一次性生成所有图层的 ``Shape``，并共用同一个变换矩阵。
 
@@ -361,12 +385,14 @@ def build_layers(
 
     * ``Fills`` —— 成品马赛克，**只有填充**；
     * ``Outlines`` —— 同一套几何的描边，颜色由各自的填充色派生
-      （:func:`derived_stroke`）。独立成层，方便整体隐藏或换成别的线稿；
+      （:func:`derived_stroke`）。独立成层，方便整体隐藏；
+    * ``Interlace`` —— 同一套边网编成的带子（给了 ``weave_style`` 才有）：
+      在交叉点上交替压上 / 压下，压下的那一端切掉缺口；
     * ``Tiling`` —— 瓷砖分界线，去重后的边网络；
     * ``Lines`` —— 构造线，裁到图案凸包内。
 
-    线宽不参与几何：各层的笔划半径由后端按图层写进点属性。填充与描边共用同一套
-    坐标，所以描边正好压在填充的边界上，既不需要内缩，也不会漏缝。
+    笔划半径由后端按图层写进点属性，但 **编织的缺口是几何**：缺口宽度按带宽算，
+    所以 ``weave_style`` 一变就必须重新生成（见 ``weave._cut_distance``）。
     """
     if size <= 0.0:
         raise ValueError("size must be positive")
@@ -396,6 +422,8 @@ def build_layers(
 
     shapes = list(fills)
     shapes.extend(outlines)
+    if weave_style is not None and weave_style.half_width > 0.0:
+        shapes.extend(_interlace_shapes(fills, weave_style))
     shapes.extend(_apply(_outline_shapes(_IDENTITY, design, LAYER_TILING), transform))
 
     hull = _convex_hull([point for shape in raw for point in shape.points])
