@@ -75,6 +75,9 @@ class Weave:
     cuts: int = 0
     #: 被收回的缺口数（残段太短，宁可不编，见 ``PRUNE``）。
     pruned: int = 0
+    #: 绘制次序用的"下→上"关系：``(交叉点, 段序号, 是否压在下面)``。同一个交叉点上
+    #: 必然同时有压上的一段和压下的若干段；按"下先画"拓扑排序就能让圆头被盖住。
+    links: list[tuple[int, int, bool]] = field(default_factory=list)
     #: "没能沿带子交替"的通过段数。奇数环（三角形色块）上必然出现，**不是错误**：
     #: 每个交叉点仍然严格一上一下（见 ``build_weave`` 里的说明）。
     mismatches: int = 0
@@ -427,7 +430,8 @@ def _slice(points, cum, start: float, end: float) -> list[Point]:
 def _subtract(total: float, cuts, closed: bool):
     """从 ``[0, total]`` 里减掉切口区间，返回保留的若干段。"""
     merged: list[list[float]] = []
-    for start, end in sorted(cuts):
+    for entry in sorted(cuts):
+        start, end = entry[0], entry[1]
         start = max(0.0, start)
         end = min(total, end)
         if end - start <= 0.0:
@@ -607,7 +611,7 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
         if total <= 0.0:
             continue
 
-        cuts: list[tuple[float, float]] = []
+        cuts: list[tuple[float, float, int]] = []
         if radius > 0.0:
             indices = range(count) if closed else range(1, count - 1)
             for i in indices:
@@ -628,27 +632,27 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
                                    crossings[node_id], pid_node, pid_ends, points, edges)
                 d_in = _cut_distance(radius, gap, sin_in)
                 d_out = _cut_distance(radius, gap, sin_out)
-                cuts.append((cum[i] - d_in, cum[i] + d_out))
+                cuts.append((cum[i] - d_in, cum[i] + d_out, node_id))
                 result.cuts += 1
 
         if not cuts:
-            result.paths.append((raw, closed))
-            continue
-
-        if closed:
-            wrapped = []
-            for start, end in cuts:
-                if end > total:
-                    wrapped.append((start, total))
-                    wrapped.append((0.0, end - total))
-                elif start < 0.0:
-                    wrapped.append((0.0, end))
-                    wrapped.append((total + start, total))
-                else:
-                    wrapped.append((start, end))
-            cuts = wrapped
-
-        keep = _subtract(total, cuts, closed)
+            keep = [(0.0, total)]
+            unbroken = closed
+        else:
+            unbroken = False
+            if closed:
+                wrapped = []
+                for start, end, node_id in cuts:
+                    if end > total:
+                        wrapped.append((start, total, node_id))
+                        wrapped.append((0.0, end - total, node_id))
+                    elif start < 0.0:
+                        wrapped.append((0.0, end, node_id))
+                        wrapped.append((total + start, total, node_id))
+                    else:
+                        wrapped.append((start, end, node_id))
+                cuts = wrapped
+            keep = _subtract(total, cuts, closed)
 
         # 残段修剪：缺口把一段切得比笔宽还短时，画出来就是一颗浮着的"珠子"，比"这里不编"
         # 难看得多。所以把切出这颗珠子的那一刀收回去：那个交叉点两根带子直接叠在一起，
@@ -663,8 +667,8 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
                 if bead is None:
                     break
                 drop = None
-                for index, (_start, end) in enumerate(cuts):
-                    if abs(end - bead) < 1e-9:
+                for index, entry in enumerate(cuts):
+                    if abs(entry[1] - bead) < 1e-9:
                         drop = index
                         break
                 if drop is None:
@@ -679,12 +683,41 @@ def build_weave(polygons, style: WeaveStyle | None = None) -> Weave:
             tail = keep.pop()
             keep.append((tail[0], head[1] + total))
 
+        emitted: list[tuple[float, float, int]] = []
         for start, end in keep:
             if end - start < STUB * radius:
                 continue
-            piece = _slice(ring, cum, max(0.0, start), min(total, end))
-            if len(piece) >= 2:
-                result.paths.append((piece, False))
+            if unbroken:
+                piece = raw
+            else:
+                piece = _slice(ring, cum, max(0.0, start), min(total, end))
+                if len(piece) < 2:
+                    continue
+            piece_id = len(result.paths)
+            result.paths.append((piece, unbroken))
+            emitted.append((start, end, piece_id))
+            # 端头正好落在交叉点上 ⇒ 这一段是"压在下面"的
+            for where, at_end in ((start, True), (end, False)):
+                for cut in cuts:
+                    value = cut[1] if at_end else cut[0]
+                    if abs(min(max(value, 0.0), total) - where) < 1e-9:
+                        result.links.append((cut[2], piece_id, True))
+                        break
+
+        # 交叉点落在某一段的内部 ⇒ 这一段是"压在上面"的（绘制次序约束的另一半）
+        for i in (range(count) if closed else range(1, count - 1)):
+            node_id = nodes[i]
+            if node_id not in crossings:
+                continue
+            in_edge = walked[i - 1] if i > 0 else walked[-1]
+            pid = pid_at.get((node_id, in_edge))
+            if pid is None or not is_over[pid]:
+                continue
+            where = cum[i]
+            for start, end, piece_id in emitted:
+                if start - 1e-9 <= where <= end + 1e-9:
+                    result.links.append((node_id, piece_id, False))
+                    break
 
     return result
 
