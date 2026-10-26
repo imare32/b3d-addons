@@ -369,9 +369,9 @@ def _interlace_shapes(fills: list[Shape], style: WeaveStyle) -> list[Shape]:
     再出本体——露出来的那一圈就是蕾丝边。描边放独立图层而不是同层交错，是因为同层里
     后画的描边会压到前一根带子的本体上（交叉处一根深线横穿别人的身体）。
 
-    两层的切口**不一样**：描边要贴平对方边缘，本体必须退出对方 footprint（否则斜交叉
-    上会咬断对方那圈描边，上下遮挡就没了），退出来的缺口由 ``result.tips`` 那批多边形
-    补片按对方边缘裁齐补上——只填不描，画在本体层。
+    **描边层不切口**（它永远在最下面，深压深，切与不切看不出来），切口只出现在本体层：
+    本体必须退出对方 footprint（否则斜交叉上会咬断对方那圈描边，上下遮挡就没了），退出
+    来的缺口由 ``result.tips`` 那批多边形补片按对方边缘裁齐补上——只填不描，画在本体层。
     """
     result = build_weave([shape.points for shape in fills], style)
     shapes: list[Shape] = []
