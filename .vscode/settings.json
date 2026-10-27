@@ -9,6 +9,7 @@
     "./gen_zellij",
     "./gen_rosette",
     "./sim_catenary",
-    "./gen_celtic"
+    "./gen_celtic",
+    "./sim_dendrite"
   ]
 }
