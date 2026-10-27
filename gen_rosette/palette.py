@@ -6,8 +6,10 @@
 * 写进 Blender 的颜色属性（``vertex_color``、材质、世界背景）前必须转线性，
   否则渲染出来整体发白 —— 用 :func:`hex_to_linear`。
 
-**打包说明**：Blender 扩展必须自包含，所以 ``gen_zellij/palette.py`` 是本文件的
-逐字副本（随扩展打进 zip）。改色板时两处一起改，用 ``Get-FileHash`` 对比即可。
+**打包说明**：Blender 扩展必须自包含，所以 ``gen_zellij/palette.py``、
+``gen_rosette/palette.py``、``sim_catenary/palette.py``、``gen_celtic/palette.py``
+都是本文件的**逐字副本**（随各自的 zip 打包）。改色板时五份一起改，用
+``Get-FileHash`` 对比即可确认同步。
 """
 
 from __future__ import annotations

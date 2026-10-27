@@ -1,0 +1,23 @@
+schema_version = "1.0.0"
+
+id = "sim_catenary"
+version = "0.1.0"
+name = "Sim Catenary"
+tagline = "XPBD interlocked-ring catenary, drawn as Grease Pencil strokes"
+maintainer = "imare32"
+type = "add-on"
+
+tags = ["Grease Pencil", "Physics"]
+
+# GP v3 的逐点 position / vertex_color 与相扣排序在 5.2.2 上实测通过；4.x 未验证，故设 5.0 起。
+blender_version_min = "5.0.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+[build]
+paths_exclude_pattern = [
+    "__pycache__/",
+    "/.git/",
+    "/.temp/",
+    "/*.zip",
+]
