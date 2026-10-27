@@ -16,11 +16,16 @@ from .palette import BACKGROUND, hex_to_linear
 from .props import DESIGN_KEYS
 
 __all__ = [
+    "DISPLAY_KEY",
     "GENC_OT_delete",
     "GENC_OT_generate",
     "GENC_OT_setup_scene",
     "GENC_OT_sync_from_object",
+    "GENC_OT_toggle_source_wire",
 ]
+
+#: 切到线框前，源网格原来的「显示为」记在这儿（切回来照原样还原，不靠猜）。
+DISPLAY_KEY = "gen_celtic_display_type"
 
 
 def _paint_canvas(scene) -> None:
@@ -190,6 +195,37 @@ class GENC_OT_sync_from_object(bpy.types.Operator):
             f"resolution={settings.resolution} "
             f"splines={settings.spline_resolution}",
         )
+        return {"FINISHED"}
+
+
+class GENC_OT_toggle_source_wire(bpy.types.Operator):
+    """源网格在线框与实体之间切换（线框能看穿源网格，方便核对结怎么绕着它走）"""
+
+    bl_idname = "gen_celtic.toggle_source_wire"
+    bl_label = "源网格线框显示"
+    bl_options = {"REGISTER", "UNDO"}
+
+    #: ``Object.display_type`` 的合法值；还原时拿到别的值就退回实体。
+    _DISPLAY_TYPES = {"BOUNDS", "SOLID", "TEXTURED", "WIRE"}
+
+    @classmethod
+    def poll(cls, context):
+        settings = getattr(context.scene, "gen_celtic", None)
+        return settings is not None and settings.source is not None
+
+    def execute(self, context):
+        source = context.scene.gen_celtic.source
+        if source.display_type == "WIRE":
+            previous = str(source.get(DISPLAY_KEY, "TEXTURED"))
+            source.display_type = previous if previous in self._DISPLAY_TYPES else "TEXTURED"
+            if DISPLAY_KEY in source:
+                del source[DISPLAY_KEY]
+            self.report({"INFO"}, f"{source.name}: {source.display_type.lower()} display")
+        else:
+            # 记下用户自己的显示方式（BOUNDS / SOLID / TEXTURED），切回来时原样还给他
+            source[DISPLAY_KEY] = source.display_type
+            source.display_type = "WIRE"
+            self.report({"INFO"}, f"{source.name}: wireframe display")
         return {"FINISHED"}
 
 

@@ -64,6 +64,7 @@ def _classes():
         ops.GENC_OT_generate,
         ops.GENC_OT_delete,
         ops.GENC_OT_sync_from_object,
+        ops.GENC_OT_toggle_source_wire,
         ops.GENC_OT_setup_scene,
         ui.GENC_PT_main,
     )

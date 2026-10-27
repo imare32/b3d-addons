@@ -29,7 +29,16 @@ class GENC_PT_main(bpy.types.Panel):
         obj = tube.find_object()
 
         # --- 输入 ---------------------------------------------------------
-        layout.prop(settings, "source")
+        row = layout.row(align=True)
+        row.prop(settings, "source")
+        # 线框开关：源网格套在结外面时，切成线框才看得见里面的结
+        row.operator(
+            "gen_celtic.toggle_source_wire",
+            text="",
+            icon="SHADING_WIRE",
+            depress=settings.source is not None
+            and settings.source.display_type == "WIRE",
+        )
 
         if settings.source is None:
             layout.label(text="先选一个网格物体（平面/球/环都行）", icon="INFO")
