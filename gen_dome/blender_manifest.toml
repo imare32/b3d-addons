@@ -1,0 +1,24 @@
+schema_version = "1.0.0"
+
+id = "gen_dome"
+version = "0.1.0"
+name = "Gen Dome"
+tagline = "Fibonacci dome: spherical Voronoi panels, live growth animation"
+maintainer = "imare32"
+type = "add-on"
+
+tags = ["Mesh", "Object", "Geometry Nodes", "Add Mesh"]
+
+# 实测 5.2.2：几何节点接口按名字访问（4.x 未验证），修改器输入走
+# modifier.properties.inputs（5.x 才有的接口），故设 5.0 起。
+blender_version_min = "5.0.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+[build]
+paths_exclude_pattern = [
+    "__pycache__/",
+    "/.git/",
+    "/.temp/",
+    "/*.zip",
+]

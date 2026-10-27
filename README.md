@@ -273,6 +273,7 @@ blender --command extension build --source-dir "C:\git\b3d-addons\<ext_id>" --ou
 | [`gen_rosette`](gen_rosette/README.md) | Gen Rosette | 生成式星形玫瑰线，编成上下交替的蕾丝带，渲染为分层 Grease Pencil v3 | 可用（5.2.2 实测） | 无外部依赖 | — |
 | [`sim_catenary`](sim_catenary/README.md) | Sim Catenary | XPBD 铁环相扣悬链线物理模拟，逐帧驱动 Grease Pencil 笔划（可按张力着色） | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 | [`gen_celtic`](gen_celtic/README.md) | Gen Celtic | 任意网格 → 交织绳结（编的是求值几何，输出曲线 + 几何节点扫成圆管），改源网格 / 修改器参数即重编 | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
+| [`gen_dome`](gen_dome/README.md) | Gen Dome | 生成式斐波那契穹顶：球面 Voronoi 面板，逐代重划分的生长（点数递增 → 面板变多变小），几何节点按帧挑代 + 种子上立柱 | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 | [`sim_dendrite`](sim_dendrite/README.md) | Sim Dendrite | Warren 相场晶枝生长模拟，逐帧推进后画成 3D 高度场（相场 / 过冷度两种配色） | 可用（5.2.2 实测） | 可选 taichi（GPU 加速，250² 约 5 ms/帧）；缺失时回退纯 NumPy | — |
 
 新增一个扩展的最小步骤：
@@ -328,8 +329,9 @@ BACKGROUND = "#E4D9D0"
 
 色板落在 [`_shared/palette.py`](_shared/palette.py)（含 `hex_to_linear()` / `srgb_to_linear()`）。
 Blender 扩展必须自包含，所以 `gen_zellij/palette.py`、`gen_rosette/palette.py`、
-`sim_catenary/palette.py`、`gen_celtic/palette.py` 与 `sim_dendrite/palette.py` 都是它的
-**逐字副本**（随各自的 zip 打包）：改色时六处一起改，`Get-FileHash` 比对即可确认同步。
+`sim_catenary/palette.py`、`gen_celtic/palette.py`、`gen_dome/palette.py` 与
+`sim_dendrite/palette.py` 都是它的**逐字副本**（随各自的 zip 打包）：改色时七处一起改，
+`Get-FileHash` 比对即可确认同步。
 
 ## 快捷键速查
 
