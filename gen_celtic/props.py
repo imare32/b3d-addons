@@ -70,6 +70,16 @@ def _apply_spline_resolution(self, context):
         obj[DESIGN_KEYS["spline_resolution"]] = int(self.spline_resolution)
 
 
+def _mark_live(self, context):
+    """重新打开实时更新：立刻补一次，别等下次网格变化才追上。"""
+    if not self.live:
+        return
+    # 函数内 import：live → weave → props 是个环，模块级 import 会死锁
+    from . import live
+
+    live.request()
+
+
 def _apply_material_color(self, context):
     """绳色只改材质基色，几何一点不动。"""
     if tube.find_object() is None:
@@ -140,6 +150,7 @@ class GenCelticSettings(bpy.types.PropertyGroup):
         description="编辑源网格时自动重编（每次更新先比对指纹，没变就直接跳过）；"
         "网格很大时重编本身很贵，关掉它手动点更新",
         default=True,
+        update=_mark_live,
     )
 
     # --- 外观 -------------------------------------------------------------

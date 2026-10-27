@@ -96,7 +96,17 @@ Group Input(Geometry, Radius, Resolution)
 
 ## 实时更新（`live.py`）
 
-`depsgraph_update_post` 处理器，每次都先算**指纹**再决定要不要重编：
+两段式：`depsgraph_update_post` 处理器**只判断**要不要编（实时开关、源物体是不是网格、
+结对象在不在、面数过不过上限），通过就往 timer 里排一次「立刻执行」；真正的编结在
+timer 回调里跑，走 `weave.apply`（先比指纹，没变就什么都不做）。
+
+**为什么不在处理器里直接编**（Blender 5.2 实测，代价是崩溃）：撤销 / 重做时 Blender 正在
+换掉一批数据块，处理器如果这时候往生成对象里写网格（`write_strands` 开头就是
+`mesh.clear_geometry()`），等于把数据从它脚下抽走；编辑模式里拖动点、按 Ctrl+Z 直接把
+Blender 干掉了。挪进 timer 之后，写操作一定发生在求值 / 撤销恢复之后。顺带处理器本身也
+不再有 O(面数) 的开销 —— 指纹现在只在 timer 里算。
+
+其余细节：
 
 * 对象模式走 numpy 快路径（`knot.mesh_signature`：`foreach_get("co")`），
   编辑模式只能走 BMesh（`knot.signature`）；两条路共用同一套 numpy 运算，
@@ -104,7 +114,9 @@ Group Input(Geometry, Radius, Resolution)
 * **编辑模式里的坐标只有 `bmesh.from_edit_mesh(obj.data)` 拿得到**：`obj.data` 是进编辑
   模式前的旧坐标，求值网格在编辑模式下是空的，拖动中的点只活在编辑 BMesh 里。
   它是借来的（`weave.edit_bmesh`），用完不能 `free()`；
-* 指纹没变直接返回，写生成对象引发的那次更新也落在这一条上，不会递归。
+* 指纹没变直接返回，写生成对象引发的那次更新也落在这一条上，不会递归；
+* 处理器按「模块名 + 函数名」认自己的处理器（不是函数对象），热重载留下旧实例也不会
+  重复挂；「实时更新」重新打开时会立刻补一次（`live.request()`），不用等下次改网格。
 
 `LIVE_FACE_LIMIT`（20000 面）是保护：小网格拖点很舒服，十几万面的网格每次拖点都重编
 会把 Blender 拖死，超过就直接跳过（面板亮一条提示），手动点「更新」照常工作。
@@ -127,8 +139,9 @@ Group Input(Geometry, Radius, Resolution)
 
 | 动作 | 耗时 |
 |---|---|
-| 空转检查（对象模式，numpy 指纹） | **0.49 ms** |
-| 空转检查（编辑模式，BMesh 指纹） | **4.9 ms** |
+| 处理器本身（只判断 + 排 timer，不再算指纹） | **0.004 ms** |
+| timer 里空转一次（对象模式，numpy 指纹） | **0.60 ms** |
+| timer 里空转一次（编辑模式，BMesh 指纹） | **7.6 ms** |
 | 拖点后重编（knot 遍历占绝大部分） | **327 ms** |
 
 生成的开销几乎全在遍历（`knot.build`）；扫管与修改器求值在 66,048 点的规模上只占小头。
@@ -141,7 +154,7 @@ knot.py   凯尔特结遍历：扭转标记 / 走带子 / 抬升 / 指纹（只 
 tube.py   几何节点后端：节点组 / 修改器输入 / 材质 / 生成对象
 weave.py  编结入口：指纹比对 → 遍历 → 写对象（算子与实时处理器走同一条路）
 props.py  scene.gen_celtic 参数组 + 对象上回存的设计参数
-live.py   depsgraph_update_post 处理器（实时更新）
+live.py   实时更新：depsgraph_update_post 只判断，编结推迟到 timer 里跑
 ops.py    编结 / 删除 / 回读参数 / 场景预设
 ui.py     View3D > 侧栏 > Celtic
 palette.py 项目色板副本（改色记得与 _shared/palette.py 同步）
@@ -160,4 +173,5 @@ palette.py 项目色板副本（改色记得与 _shared/palette.py 同步）
   提前收尾并记进「异常收尾」；闭合流形网格上不会出现（实测量到 0）；
 * **只做 Celtic 一种编织**：Lattice / Weave 两种没搬（它们只是在扭转标记上加随机）；
 * 半径 / 抬升按**平均边长**缩放，网格边长很不均匀时（长条 + 小块混在一起）会偏；
-* 实时更新是"松手/更新即重编"，没有做增量更新；超大网格请关掉实时，手动点「更新」。
+* 实时更新是"整份重编"，没有做增量更新：拖动时每个事件循环最多编一次，源网格十几万面时
+  每次仍要几百毫秒，请关掉实时、手动点「更新」。
