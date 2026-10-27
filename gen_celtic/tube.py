@@ -1,15 +1,18 @@
-"""几何后端：把「点 + 边」的带子网格喂进几何节点，长出实体绳管。
+"""几何后端：把带子路径写成曲线对象，再由几何节点扫成实体绳管。
 
-算法层（``knot``）只算出一堆折线（每个交点一个点、几点一条带），这里负责三件事：
+算法层（``knot``）只算出一堆点（每个交点一个点、几点一条带），这里负责三件事：
 
-1. **节点组** —— 一个 ``Celtic Knot Tube`` 几何节点组：``Mesh to Curve``（只吃边、
-   断开处各自成条）→ ``Curve Spline Type`` 转 Bezier + 自动手柄（折线变圆滑绳路）
-   → ``Set Spline Resolution``（绳路采样密度，``Spline Resolution`` 输入）→
-   ``Curve to Mesh`` 用圆环截面挤出（``Resolution`` / ``Radius`` 两个输入）→
-   ``Set Shade Smooth`` → ``Set Material``。组只建一次，之后复用。
-2. **对象** —— 带子网格写进 ``Celtic Knot`` 数据块，挂上上面的修改器。改抬升 = 重写
-   点坐标；改半径 / 分段 = 只改修改器输入，不碰网格（所以拖滑块是实时的）。
-3. **材质** —— 一个 Principled 材质，基色进的是**线性**值（面板属性是
+1. **曲线** —— 带子路径直接写成 ``Celtic Knot`` 曲线数据块：每根带子一条 Bezier 样条
+   （点就是交点，手柄 ``AUTO``：折线走成圆滑的绳路），闭合的带子 ``use_cyclic_u``。
+   生成对象因此**本来就是曲线**（跟参考实现 ``celtic-knot`` 的 BEZIER 输出一致），
+   几何节点里不必再来回「网格 → 曲线 → 网格」。
+2. **节点组** —— 一个 ``Celtic Knot Tube`` 几何节点组：``Set Spline Resolution``（绳路
+   采样密度，``Spline Resolution`` 输入）→ ``Curve to Mesh`` 用圆环截面挤出
+   （``Resolution`` / ``Radius`` 两个输入）→ ``Set Shade Smooth`` → ``Set Material``。
+   组只建一次，之后复用。
+3. **对象** —— 曲线写进 ``Celtic Knot`` 数据块，挂上上面的修改器。改抬升 = 重写样条；
+   改半径 / 分段 / 采样 = 只改修改器输入，不碰曲线（所以拖滑块是实时的）。
+4. **材质** —— 一个 Principled 材质，基色进的是**线性**值（面板属性是
    ``COLOR_GAMMA``，存的就是线性）。
 
 **Blender 5.x 注意**：修改器上的节点组输入要走
@@ -34,7 +37,6 @@ __all__ = [
     "build_object",
     "ensure_modifier",
     "find_object",
-    "get_mod_input",
     "material",
     "remove_object",
     "set_geometry_material",
@@ -44,7 +46,7 @@ __all__ = [
     "set_spline_resolution",
     "stored_mean",
     "tube_group",
-    "write_strands",
+    "write_curve",
 ]
 
 #: 生成对象的名字（固定名，方便找回来）。
@@ -59,7 +61,9 @@ GROUP_NAME = "Celtic Knot Tube"
 MATERIAL_NAME = "Celtic Cord"
 
 #: 节点组版本；不匹配就地重搭（老文件里的组可能缺输入，直接复用会静默失效）。
-GROUP_VERSION = 2
+#: 3 = 输入改成曲线（去掉 Mesh to Curve / Spline Type / Set Handles）。
+#: 4 = 节点摆好位置（3 版建出来是全叠在原点的一团）。
+GROUP_VERSION = 4
 _VERSION_KEY = "gen_celtic_api"
 #: 绳路采样密度（Bezier 每段插多少点）的默认值；输出面数 ≈ 源面数 × 4 × 圆周分段 × 这个值。
 SPLINE_RESOLUTION = 12
@@ -74,6 +78,17 @@ def _socket(node, *names):
         if socket is not None:
             return socket
     raise KeyError(f"{node.bl_idname} missing input {names[0]!r}")
+
+
+def _new_node(nodes, bl_idname, location):
+    """建节点并摆好位置。
+
+    ``nodes.new()`` 不指定位置的话所有节点都叠在原点（打开编辑器就是一团），
+    所以这里一律给坐标：从左到右按数据流方向排。
+    """
+    node = nodes.new(bl_idname)
+    node.location = location
+    return node
 
 
 def _interface_identifier(modifier, name):
@@ -134,19 +149,6 @@ def set_mod_input(modifier, name, value) -> None:
     modifier[identifier] = value  # 4.x：# 下标就是 identifier
 
 
-def get_mod_input(modifier, name, default=None):
-    """读节点组修改器的输入；没有这个插口（或几何插口没有值）就返回 ``default``。"""
-    socket = _input_socket(modifier, name)
-    if socket is not None:
-        return socket.value
-    if _mod_inputs(modifier) is not None:
-        return default  # 5.x：新接口说了算，读不到就是没值，别去碰 IDProperties
-    identifier = _interface_identifier(modifier, name)
-    if identifier is None:
-        return default
-    return modifier.get(identifier, default)  # 4.x：# 老版本才走 IDProperties
-
-
 def tube_group():
     """取（必要时建）绳管节点组。"""
     group = bpy.data.node_groups.get(GROUP_NAME)
@@ -189,33 +191,24 @@ def tube_group():
     spline_res.default_value = SPLINE_RESOLUTION
 
     nodes, links = group.nodes, group.links
-    source = nodes.new("NodeGroupInput")
-    output = nodes.new("NodeGroupOutput")
+    source = _new_node(nodes, "NodeGroupInput", (-447.0, 0.0))
+    output = _new_node(nodes, "NodeGroupOutput", (523.0, 0.0))
 
-    # 边 → 曲线：相连的边走成一条样条，闭合带子是闭合的环
-    to_curve = nodes.new("GeometryNodeMeshToCurve")
-    # 折线 → Bezier（自动手柄）：阶梯状的折线走成真实绳子的圆滑路
-    spline = nodes.new("GeometryNodeCurveSplineType")
-    spline.spline_type = "BEZIER"
-    handles = nodes.new("GeometryNodeCurveSetHandles")
-    handles.handle_type = "AUTO"
-    handles.mode = {"LEFT", "RIGHT"}
+    # 输入本来就是曲线（带子就是一串 Bezier 样条）：不必 Mesh to Curve，也不必
+    # Spline Type + Set Handles —— 那些在写曲线时就已经定好了
     # 绳路采样密度：Bezier 每段插多少点。默认 12（Blender 自己的默认值）——
     # 输出面数 ≈ 源面数 × 4 × 圆周分段 × 这个值，源网格很密时在修改器面板里调小它
-    sampling = nodes.new("GeometryNodeSetSplineResolution")
+    sampling = _new_node(nodes, "GeometryNodeSetSplineResolution", (-257.0, 71.0))
     # 圆环截面 → 挤成管
-    circle = nodes.new("GeometryNodeCurvePrimitiveCircle")
+    circle = _new_node(nodes, "GeometryNodeCurvePrimitiveCircle", (-247.0, -71.0))
     circle.mode = "RADIUS"
-    to_mesh = nodes.new("GeometryNodeCurveToMesh")
-    smooth = nodes.new("GeometryNodeSetShadeSmooth")
-    # 材质必须在节点组里定：带子网格只有边没有面，材质槽传不到求值后的几何上，
-    # 少了这一步渲染出来是默认白（材质属性挂在没面的网格上是空转）
-    assign = nodes.new("GeometryNodeSetMaterial")
+    to_mesh = _new_node(nodes, "GeometryNodeCurveToMesh", (-47.0, 0.0))
+    smooth = _new_node(nodes, "GeometryNodeSetShadeSmooth", (143.0, 0.0))
+    # 材质在实际输出上定一次：曲线数据块自己也挂同一个材质（材质槽一致），但扫成管
+    # 之后的几何以组内这一处为准，省得桥接换了材质索引就掉成默认白
+    assign = _new_node(nodes, "GeometryNodeSetMaterial", (333.0, 0.0))
 
-    links.new(source.outputs["Geometry"], to_curve.inputs["Mesh"])
-    links.new(to_curve.outputs["Curve"], spline.inputs["Curve"])
-    links.new(spline.outputs["Curve"], handles.inputs["Curve"])
-    links.new(handles.outputs["Curve"], sampling.inputs["Curve"])
+    links.new(source.outputs["Geometry"], sampling.inputs["Curve"])
     links.new(sampling.outputs["Curve"], to_mesh.inputs["Curve"])
     links.new(circle.outputs["Curve"], to_mesh.inputs["Profile Curve"])
     links.new(to_mesh.outputs["Mesh"], smooth.inputs["Mesh"])
@@ -234,11 +227,28 @@ def tube_group():
 
 
 def find_object():
-    """按标记找回生成对象（没有就返回 ``None``）。"""
+    """按标记找回生成对象（没有就返回 ``None``）。
+
+    生成对象是**曲线**；老版本生成的是网格对象，这里也认得出来 ——
+    :func:`build_object` 见到它会就地换成曲线对象。
+    """
     for obj in bpy.data.objects:
-        if obj.type == "MESH" and MARKER in obj:
+        if MARKER in obj and obj.type in {"CURVE", "MESH"}:
             return obj
     return None
+
+
+def _drop(obj) -> None:
+    """删对象，连带它独占的数据块（曲线 / 网格各走各的集合）。"""
+    data = obj.data
+    kind = obj.type
+    bpy.data.objects.remove(obj, do_unlink=True)
+    if data is None or data.users:
+        return
+    if kind == "CURVE":
+        bpy.data.curves.remove(data)
+    elif kind == "MESH":
+        bpy.data.meshes.remove(data)
 
 
 def remove_object() -> bool:
@@ -246,10 +256,7 @@ def remove_object() -> bool:
     obj = find_object()
     if obj is None:
         return False
-    mesh = obj.data
-    bpy.data.objects.remove(obj, do_unlink=True)
-    if mesh is not None and mesh.users == 0:
-        bpy.data.meshes.remove(mesh)
+    _drop(obj)
     return True
 
 
@@ -308,7 +315,7 @@ def _tag(obj) -> None:
 
 
 def set_radius(obj, radius: float) -> None:
-    """只改管半径（修改器输入），不碰带子网格。"""
+    """只改管半径（修改器输入），不碰曲线。"""
     modifier = obj.modifiers.get(MODIFIER_NAME)
     if modifier is not None:
         set_mod_input(modifier, "Radius", float(radius))
@@ -316,7 +323,7 @@ def set_radius(obj, radius: float) -> None:
 
 
 def set_resolution(obj, resolution: int) -> None:
-    """只改圆周分段（修改器输入），不碰带子网格。"""
+    """只改圆周分段（修改器输入），不碰曲线。"""
     modifier = obj.modifiers.get(MODIFIER_NAME)
     if modifier is not None:
         set_mod_input(modifier, "Resolution", int(resolution))
@@ -324,7 +331,7 @@ def set_resolution(obj, resolution: int) -> None:
 
 
 def set_spline_resolution(obj, spline_resolution: int) -> None:
-    """只改绳路采样密度（修改器输入），不碰带子网格。"""
+    """只改绳路采样密度（修改器输入），不碰曲线。"""
     modifier = obj.modifiers.get(MODIFIER_NAME)
     if modifier is not None:
         set_mod_input(modifier, "Spline Resolution", int(spline_resolution))
@@ -353,38 +360,62 @@ def material(color, name: str = MATERIAL_NAME):
     return mat
 
 
-def write_strands(mesh, verts, edges) -> None:
-    """把带子折线写进网格数据块（原地重建，数据块与材质槽都留着）。"""
-    mesh.clear_geometry()
-    mesh.from_pydata(verts, edges, [])
-    mesh.update()
+def write_curve(curve, paths, spline_resolution: int = SPLINE_RESOLUTION) -> None:
+    """把带子路径写进曲线数据块（原地重建样条，数据块与材质槽都留着）。
+
+    每根带子一条 Bezier 样条：点就是交点，手柄给 ``AUTO``（等价参考实现里用算子设的
+    ``AUTOMATIC``），闭合的带子 ``use_cyclic_u`` —— 曲线自己就带着绳路，几何节点
+    不用再从网格反推。
+    """
+    for spline in list(curve.splines):
+        curve.splines.remove(spline)
+    for points, closed in paths:
+        spline = curve.splines.new("BEZIER")
+        spline.bezier_points.add(len(points) - 1)
+        spline.bezier_points.foreach_set(
+            "co", [value for point in points for value in point]
+        )
+        spline.use_cyclic_u = bool(closed)
+        # 数据块自己也存一份采样密度：去掉修改器时曲线仍然是这个精度
+        spline.resolution_u = int(spline_resolution)
+        for point in spline.bezier_points:
+            point.handle_left_type = "AUTO"
+            point.handle_right_type = "AUTO"
+    # 曲线没有 Mesh.update() 那一套（5.2 上 Curve 没有 update 方法），标脏即可
+    curve.update_tag()
 
 
 def build_object(
-    verts,
-    edges,
+    paths,
     radius: float,
     resolution: int,
     spline_resolution: int = SPLINE_RESOLUTION,
     collection=None,
     color=(0.8, 0.8, 0.8),
 ):
-    """写（或更新）生成对象：带子网格 + 绳管修改器 + 材质。
+    """写（或更新）生成对象：曲线 + 绳管修改器 + 材质。
 
-    对象已经存在就地更新：数据块不变，材质槽不变，改的只是点坐标与修改器输入 ——
+    对象已经存在就地更新：数据块不变，材质槽不变，改的只是样条与修改器输入 ——
     编辑模式里反复更新也不会把用户挪过的对象位置、加过的材质槽抖掉。
+    老版本留下的同名网格对象（带标记）就地换成曲线对象。
     """
     obj = find_object()
+    if obj is not None and obj.type != "CURVE":
+        _drop(obj)
+        obj = None
     if obj is None:
-        mesh = bpy.data.meshes.new(OBJECT_NAME)
-        obj = bpy.data.objects.new(OBJECT_NAME, mesh)
+        curve = bpy.data.curves.new(OBJECT_NAME, "CURVE")
+        curve.dimensions = "3D"
+        # 管子的扭转沿绳路取最小扭转，交叉处不会自己拧起来（参考实现同此设置）
+        curve.twist_mode = "MINIMUM"
+        obj = bpy.data.objects.new(OBJECT_NAME, curve)
         (collection or bpy.context.collection).objects.link(obj)
-    write_strands(obj.data, verts, edges)
+    write_curve(obj.data, paths, spline_resolution)
     obj[MARKER] = True
     modifier = ensure_modifier(obj, radius, resolution, spline_resolution)
 
     mat = material(color)
-    # 几何那头也要认这个材质（带子网格没有面，材质槽传不到求值后的几何上）
+    # 扫成管之后的几何以节点组里那一处为准
     set_geometry_material(modifier.node_group, mat)
     if len(obj.data.materials):
         obj.data.materials[0] = mat

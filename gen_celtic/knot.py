@@ -51,13 +51,16 @@ IGNORE = "ignore"
 
 
 class Knot:
-    """一次遍历的结果：点 / 边 / 统计。"""
+    """一次遍历的结果：带子路径 + 统计。
 
-    __slots__ = ("verts", "edges", "stats")
+    ``paths`` 里每根带子是 ``(点序列, 是否闭合)`` —— 点序列直接当曲线样条的控制点用，
+    闭合的带子首尾相连，所以这里不出「点 + 边」，曲线对象不需要再从中反推拓扑。
+    """
 
-    def __init__(self, verts, edges, stats):
-        self.verts = verts
-        self.edges = edges
+    __slots__ = ("paths", "stats")
+
+    def __init__(self, paths, stats):
+        self.paths = paths
         self.stats = stats
 
     def __repr__(self):  # pragma: no cover - 调试用
@@ -286,38 +289,33 @@ def build(bm, lift):
 
     :param bm: ``BMesh``（调用方不必先 ``normal_update``，这里会做）
     :param lift: 上 / 下的抬升量（世界单位，沿逐角法线）；``0`` 则整副结贴在表面上
-    :return: :class:`Knot` —— 每个点都是某条边的中点沿法线抬起 ``±lift`` 的结果
+    :return: :class:`Knot` —— 每根带子是一串点，各是某条边的中点沿法线抬起 ``±lift`` 的结果
     """
     started = time.perf_counter()
     bm.normal_update()
     points = _PathPoints(lift)
     broken = visit_strands(bm, celtic_twists(bm), points)
 
-    verts = []
-    edges = []
+    paths = []
     counts = []
     for strand in points.strands:
         count = len(strand)
         if count < 2:
-            continue  # 单点带子连不成管（参考实现会留一条看不见的退化曲线）
+            continue  # 单点带子连不成曲线（参考实现会留一条看不见的退化曲线）
         counts.append(count)
-        base = len(verts)
-        verts.extend(strand)
-        # 带子走回自己走过的方向才收尾 → 一律闭合，首尾补一段；只有两个点的
-        #「往返」补出来是同一段管叠两层，留一段敞着
-        limit = count if count > 2 else count - 1
-        for step in range(limit):
-            edges.append((base + step, base + (step + 1) % count))
+        # 带子走回自己走过的方向才收尾 → 一律闭合；只有两个点的「往返」闭合成环就是
+        # 同一段路来回走两遍，留一段敞着
+        paths.append((strand, count > 2))
 
     counts.sort()
     stats = {
         "faces": len(bm.faces),
-        "points": len(verts),
+        "points": sum(counts),
         "strands": len(counts),
         "shortest": counts[0] if counts else 0,
         "median": counts[len(counts) // 2] if counts else 0,
         "longest": counts[-1] if counts else 0,
-        "conflicts": broken,
+        "broken": broken,
         "ms": (time.perf_counter() - started) * 1000.0,
     }
-    return Knot(verts, edges, stats)
+    return Knot(paths, stats)

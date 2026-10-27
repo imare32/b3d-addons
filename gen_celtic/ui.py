@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import bpy
 
-from . import live, tube
+from . import live, tube, weave
 
 __all__ = ["GENC_PT_main"]
 
@@ -88,7 +88,8 @@ class GENC_PT_main(bpy.types.Panel):
             layout.label(text="参数已改，需重新编结", icon="INFO")
 
         # --- 实时更新提示 -------------------------------------------------
-        faces = len(source.data.polygons)
+        # 面数取求值后的：源物体挂的修改器 / 几何节点跑完才是要编的规模
+        faces = weave.source_face_count(source)
         if faces > live.LIVE_FACE_LIMIT:
             layout.label(
                 text=f"源网格 {faces} 面，实时更新已停（超过 {live.LIVE_FACE_LIMIT}）",
@@ -113,15 +114,17 @@ class GENC_PT_main(bpy.types.Panel):
             if settings.last_note:
                 box.label(text=settings.last_note)
             note = f"{settings.last_ms:.0f} ms"
-            if settings.last_conflicts:
-                note += f" · 异常收尾 {settings.last_conflicts}"
+            if settings.last_broken:
+                note += f" · 异常收尾 {settings.last_broken}"
             box.label(text=note)
 
         if settings.error:
             layout.label(text=settings.error, icon="ERROR")
         elif obj is not None:
-            strand_edges = len(obj.data.edges)
-            layout.label(
-                text=f"结对象 {obj.name} · {strand_edges} 段",
-                icon="OUTLINER_OB_MESH",
-            )
+            if obj.type == "CURVE":
+                detail = f"{len(obj.data.splines)} 条样条"
+                icon = "OUTLINER_OB_CURVE"
+            else:  # 老版本留下的网格对象，还没重新生成
+                detail = f"{len(obj.data.edges)} 段"
+                icon = "OUTLINER_OB_MESH"
+            layout.label(text=f"结对象 {obj.name} · {detail}", icon=icon)

@@ -8,7 +8,7 @@
 
 **Blender 层**（只在 :func:`register` 里导入，因此本模块可被纯 Python 导入）::
 
-    tube  —— 几何节点后端：Mesh to Curve → Bezier → 环截面挤出（+ 材质）
+    tube  —— 几何后端：曲线对象（Bezier 样条）+ 几何节点环截面挤出（+ 材质）
     props —— ``scene.gen_celtic`` 参数组
     weave —— 编结：源网格 → 结 → 场景对象（算子与实时处理器走同一条路）
     ops   —— 编结 / 删除 / 回读参数 / 场景预设

@@ -18,7 +18,8 @@ __all__ = [
 ]
 
 #: 参数 → 写到生成对象上的自定义属性名（换文件 / 换场景后仍能取回参数）。
-#: ``radius`` / ``resolution`` 存的是**实际用到的**世界单位值（回读时按平均边长还原比例）。
+#: ``radius`` / ``resolution`` 存的是**实际用到的**世界单位值（回读时按平均边长还原比例）；
+#: ``matrix`` 是源物体的世界变换（16 个数），结按世界坐标编，物体挪动要靠它触发重编。
 DESIGN_KEYS = {
     "source": "gen_celtic_source",
     "lift": "gen_celtic_lift",
@@ -26,6 +27,7 @@ DESIGN_KEYS = {
     "resolution": "gen_celtic_resolution",
     "spline_resolution": "gen_celtic_spline_resolution",
     "signature": "gen_celtic_signature",
+    "matrix": "gen_celtic_matrix",
 }
 
 
@@ -94,7 +96,8 @@ class GenCelticSettings(bpy.types.PropertyGroup):
 
     source: bpy.props.PointerProperty(
         name="源网格",
-        description="要编成凯尔特结的网格物体；在编辑模式里挪点，结会跟着重编",
+        description="要编成凯尔特结的网格物体；编的是修改器（含几何节点）跑完之后的"
+        "求值几何，在编辑模式里挪点或改修改器参数，结都会跟着重编",
         type=bpy.types.Object,
         poll=_poll_source,
         update=_mark_dirty,
@@ -104,9 +107,9 @@ class GenCelticSettings(bpy.types.PropertyGroup):
 
     lift: bpy.props.FloatProperty(
         name="抬升",
-        description="交叉处上下起伏的幅度，单位是平均边长（抬升量 = 平均边长 × 比例）；"
-        "0 = 全贴在面上，绳管会互相穿插。属于几何，改它要重编",
-        default=0.35,
+        description="交叉处上下起伏的幅度，单位是平均边长（抬升量 = 平均边长 × 比例，"
+        "默认 0.1）；0 = 全贴在面上，绳管会互相穿插。属于几何，改它要重编",
+        default=0.1,
         min=0.0,
         soft_max=1.5,
         precision=2,
@@ -115,9 +118,9 @@ class GenCelticSettings(bpy.types.PropertyGroup):
 
     radius: bpy.props.FloatProperty(
         name="管半径",
-        description="绳管半径，单位是平均边长（默认 0.22：比抬升小，交叉处才分得开）；"
-        "只进几何节点输入，改它不用重编",
-        default=0.22,
+        description="绳管半径，单位是平均边长（默认 0.1，与抬升同值：交叉处刚好相切，"
+        "再大就穿插）；只进几何节点输入，改它不用重编",
+        default=0.1,
         min=0.01,
         soft_max=0.5,
         precision=2,
@@ -184,8 +187,9 @@ class GenCelticSettings(bpy.types.PropertyGroup):
         default=0,
     )
 
-    last_conflicts: bpy.props.IntProperty(
+    last_broken: bpy.props.IntProperty(
         name="异常收尾数",
+        description="走投无路而提前收尾的带子数（闭合流形网格上应为 0）",
         default=0,
     )
 

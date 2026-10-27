@@ -102,7 +102,7 @@ def _key_light(scene, centre, radius):
 
 
 class GENC_OT_generate(bpy.types.Operator):
-    """按面板参数把源网格编成凯尔特结（绳管实体）"""
+    """按面板参数把源网格编成凯尔特结（曲线对象 + 绳管修改器）"""
 
     bl_idname = "gen_celtic.generate"
     bl_label = "编结"
@@ -130,11 +130,11 @@ class GENC_OT_generate(bpy.types.Operator):
         message = (
             f"gen_celtic: {strands.stats['points']} points, "
             f"{strands.stats['strands']} strands, "
-            f"{strands.stats['conflicts']} broken strand ends, "
+            f"{strands.stats['broken']} broken strand ends, "
             f"{elapsed:.0f} ms"
         )
         if obj is not None:
-            message += f" | {len(obj.data.edges)} edges on {obj.name!r}"
+            message += f" | {len(obj.data.splines)} splines on {obj.name!r}"
         self.report({"INFO"}, message)
         return {"FINISHED"}
 

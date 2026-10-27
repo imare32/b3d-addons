@@ -1,19 +1,21 @@
 """实时更新：源网格一变就重编（``depsgraph_update_post`` → timer → :func:`weave.apply`）。
 
-编辑模式里挪一个点，Blender 就报一次网格更新。处理器只做**廉价的判断**（实时更新开没开、
-源物体是不是网格、结对象在不在、面数过不过上限），通过就往 timer 里挂一次「立刻执行」；
-真正的编结在 timer 里跑，那里走 :func:`weave.apply`（先比指纹，没变就什么都不做）。
+编辑模式里挪一个点、拖动修改器参数，Blender 就报一次网格更新。处理器只做**廉价的判断**
+（实时更新开没开、源物体是不是网格、结对象在不在、**求值后**的面数过不过上限），通过就往
+timer 里挂一次「立刻执行」；真正的编结在 timer 里跑，那里走 :func:`weave.apply`
+（先比求值几何的指纹，没变就什么都不做）。
 
 **为什么不能直接在处理器里编**（5.2 实测，踩到 Blender 崩溃）：撤销 / 重做的时候，
-Blender 正在换掉一批数据块，处理器如果此时往生成对象里写网格（``write_strands`` 开头就是
-``mesh.clear_geometry()``），等于把数据从它脚下抽走 —— 编辑模式拖点后按 Ctrl+Z 直接把
+Blender 正在换掉一批数据块，处理器如果此时往生成对象里写几何（``write_curve`` 开头就是
+把样条全删了重建），等于把数据从它脚下抽走 —— 编辑模式拖点后按 Ctrl+Z 直接把
 Blender 干掉了。挪进 timer 之后，写操作一定发生在求值 / 撤销恢复之后。
 
 顺带的好处是处理器本身不再有 O(面数) 的开销：指纹现在只在 timer 里算。
 
 **为什么设面数上限**：小网格拖点实时更新很舒服，十几万面的网格每次拖点都重编会把
 Blender 拖死，所以超过 ``LIVE_FACE_LIMIT`` 直接跳过（面板上显示提示），手动点「更新」
-仍然照常工作。
+仍然照常工作。面数取的是**求值后**的（``weave.source_face_count``）：源物体上挂个细分
+或者重几何节点，原始数据块可能很小，跑完才是真规模。
 
 写生成对象会再触发一次本处理器 —— 那一次要么已经被登记成 pending，要么编完比指纹没变，
 不会递归。
@@ -34,7 +36,7 @@ LIVE_FACE_LIMIT = 20000
 _TIMER_INTERVAL = 0.0
 
 
-def _wanted(scene):
+def _wanted(scene, depsgraph=None):
     """这次求值值不值得编一次；值得就返回参数组，否则 ``None``。"""
     settings = getattr(scene, "gen_celtic", None)
     if settings is None or not settings.live:
@@ -49,7 +51,8 @@ def _wanted(scene):
     if tube.find_object() is None:
         # 还没生成过：别在别人编辑网格时凭空长出对象来
         return None
-    if len(source.data.polygons) > LIVE_FACE_LIMIT:
+    # 面数按**求值后**的算：源物体可能挂着重细分 / 几何节点，跑完才见真规模
+    if weave.source_face_count(source, depsgraph) > LIVE_FACE_LIMIT:
         return None
     return settings
 
@@ -63,7 +66,7 @@ def request():
 
 def on_update(scene, depsgraph):
     """依赖图求值结束：只判断要不要编，真正的活交给 timer（见模块说明）。"""
-    if _wanted(scene) is None:
+    if _wanted(scene, depsgraph) is None:
         return
     request()
 
