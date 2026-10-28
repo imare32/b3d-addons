@@ -1,0 +1,24 @@
+schema_version = "1.0.0"
+
+id = "sim_space_colonization"
+version = "0.1.0"
+name = "Sim Space Colonization"
+tagline = "Space colonization growth over any mesh, inked as GP strokes"
+maintainer = "imare32"
+type = "add-on"
+
+tags = ["Grease Pencil", "Mesh"]
+
+# 结果用 Grease Pencil v3（``grease_pencils`` 数据块 + drawing attribute），5.0 起稳定；
+# 输入侧只要 mesh 顶点 / 多边形 API。实测环境是 5.2.2。
+blender_version_min = "5.0.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+[build]
+paths_exclude_pattern = [
+    "__pycache__/",
+    "/.git/",
+    "/.temp/",
+    "/*.zip",
+]

@@ -289,6 +289,7 @@ blender --command extension build --source-dir "C:\git\b3d-addons\<ext_id>" --ou
 | [`sim_hilbert`](sim_hilbert/README.md) | Sim Hilbert | 3D 希尔伯特曲线的弹簧质点物理模拟：格子落下来撞地、坍缩、摊开，逐帧驱动一条 GP 笔划（速度 / 应变配色） | 可用（5.2.2 实测） | 可选 taichi（GPU 加速，4 阶 4.7 万弹簧 16 ms/帧）；缺失时回退纯 NumPy（3 阶 41 ms/帧） | — |
 | [`sim_jacobi`](sim_jacobi/README.md) | Sim Jacobi | 环面 Jacobi theta 除数模拟：零点小球在环面上滚动互撞，逐帧把除数写成顶点属性（光晕 / 相角 / 势井 / 相位格纹），环面按零点凹陷 + 涟漪变形 | 可用（5.2.2 实测） | 可选 taichi（GPU 加速，150×100 约 3 ms/帧）；缺失时回退纯 NumPy（8 零点约 4 ms/帧） | — |
 | [`sim_reaction_diffusion`](sim_reaction_diffusion/README.md) | Sim Reaction Diffusion | Gray-Scott 反应扩散：8 套经典 (F, k) 预设长成迷宫 / 斑点 / 蠕虫 / 孔洞，逐帧推进后画成 3D 高度场（图案 / 水墨 / 轮廓三种配色） | 可用（5.2.2 实测） | 可选 taichi（GPU 加速，200² × 32 子步约 3.4 ms/帧）；缺失时回退纯 NumPy（约 6.8 ms/帧） | — |
+| [`sim_space_colonization`](sim_space_colonization/README.md) | Sim Space Colonization | 太空殖民生长：任意输入网格表面按面积撒吸收点，枝条逐帧长过去（贴表面 = 藤蔓 / 自由空间 = 树枝），每个分叉到枝尖画成一笔 GP（逐点半径 + 根→梢的逐点配色）；不选目标会自动建缺省输入网格 | 可用（5.2.2 实测） | 可选 scipy（KD 树，约 1.9 ms/子步）或 taichi（GPU 暴力，1.4 ms）；都缺时回退纯 NumPy（18.6 ms/子步） | — |
 
 新增一个扩展的最小步骤：
 
@@ -359,8 +360,9 @@ BACKGROUND = "#E4D9D0"
 Blender 扩展必须自包含，所以 `gen_zellij/palette.py`、`gen_rosette/palette.py`、
 `sim_catenary/palette.py`、`gen_celtic/palette.py`、`gen_dome/palette.py`、
 `sim_dendrite/palette.py`、`sim_game_of_life/palette.py`、`sim_hilbert/palette.py`、
-`sim_jacobi/palette.py` 与 `sim_reaction_diffusion/palette.py` 都是它的**逐字副本**
-（随各自的 zip 打包）：改色时十处一起改，`Get-FileHash` 比对即可确认同步。
+`sim_jacobi/palette.py`、`sim_reaction_diffusion/palette.py` 与
+`sim_space_colonization/palette.py` 都是它的**逐字副本**
+（随各自的 zip 打包）：改色时十一处一起改，`Get-FileHash` 比对即可确认同步。
 
 ## 快捷键速查
 
