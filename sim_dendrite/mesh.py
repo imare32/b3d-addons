@@ -73,13 +73,17 @@ def find_object() -> bpy.types.Object | None:
 
 
 def ensure_object(collection=None) -> bpy.types.Object:
-    """建/取生成用的网格对象；``collection`` 缺省是场景的根集合。"""
+    """建/取生成用的网格对象；``collection`` 缺省是**当前激活的** collection。
+
+    取不到 ``context.collection``（后台 / handler）时才回退到场景根集合。
+    """
     obj = find_object()
     if obj is not None:
         return obj
     mesh = bpy.data.meshes.new(OBJECT_NAME)
     obj = bpy.data.objects.new(OBJECT_NAME, mesh)
-    (collection or bpy.context.scene.collection).objects.link(obj)
+    target = collection or bpy.context.collection or bpy.context.scene.collection
+    target.objects.link(obj)
     return obj
 
 

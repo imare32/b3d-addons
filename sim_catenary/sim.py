@@ -183,7 +183,8 @@ def build(settings, scene=None) -> dict:
         error="",
     )
 
-    obj = gp.ensure_object(gp.OBJECT_NAME, scene.collection)
+    # 对象进当前激活的 collection（ensure_object 内部取 context.collection）
+    obj = gp.ensure_object(gp.OBJECT_NAME)
     sets = _stroke_sets(settings)
     gp.write(obj, sets, frame=_layer_frame(scene))
     STATE["write_points"] = int(sum(len(stroke_set.points) for stroke_set in sets))

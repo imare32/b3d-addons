@@ -409,7 +409,9 @@ def build_object(
         # 管子的扭转沿绳路取最小扭转，交叉处不会自己拧起来（参考实现同此设置）
         curve.twist_mode = "MINIMUM"
         obj = bpy.data.objects.new(OBJECT_NAME, curve)
-        (collection or bpy.context.collection).objects.link(obj)
+        (
+            collection or bpy.context.collection or bpy.context.scene.collection
+        ).objects.link(obj)
     write_curve(obj.data, paths, spline_resolution)
     obj[MARKER] = True
     modifier = ensure_modifier(obj, radius, resolution, spline_resolution)

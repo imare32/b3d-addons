@@ -271,7 +271,7 @@ def build_object(panels, settings, collection=None):
     插件只加**一个**几何节点修改器：厚度、平滑之类的效果用户自己往后面接。
     """
     obj = find_object()
-    target = collection or bpy.context.collection
+    target = collection or bpy.context.collection or bpy.context.scene.collection
     if obj is None:
         mesh = bpy.data.meshes.new(OBJECT_NAME)
         obj = bpy.data.objects.new(OBJECT_NAME, mesh)

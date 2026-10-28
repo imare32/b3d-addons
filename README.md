@@ -295,6 +295,10 @@ blender --command extension build --source-dir "C:\git\b3d-addons\<ext_id>" --ou
 - 依赖第三方库优先随扩展自带（`wheels`）或用 [Python 环境](#python-环境) 中的 modules 目录方式；
   避免隐式依赖系统 Python。
 - `unregister()` 必须完整反向清理（类、面板、快捷键、处理器、定时器），否则重载会残留重复注册。
+- **新建对象一律进「当前激活的 collection」**，不要写死 `scene.collection`：生成物、预设相机、
+  补光都算。统一写法是
+  `target = collection or bpy.context.collection or bpy.context.scene.collection`，
+  只有后台 / handler 里取不到 `context.collection` 时才回退场景根。
 
 ## 颜色偏好
 

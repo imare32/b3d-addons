@@ -100,7 +100,8 @@ def _key_light(scene, centre, radius):
     if light is None:
         data = bpy.data.lights.new("Dome Key", "SUN")
         light = bpy.data.objects.new("Dome Key", data)
-        scene.collection.objects.link(light)
+        # 加进当前激活的 collection（不是场景根），与生成对象一致
+        (bpy.context.collection or scene.collection).objects.link(light)
 
     from mathutils import Vector
 
@@ -291,7 +292,7 @@ class GEND_OT_setup_scene(bpy.types.Operator):
         if camera is None or camera.type != "CAMERA":
             data = bpy.data.cameras.new("Gen Dome Camera")
             camera = bpy.data.objects.new("Gen Dome Camera", data)
-            context.collection.objects.link(camera)
+            (context.collection or scene.collection).objects.link(camera)
             scene.camera = camera
 
         from mathutils import Vector

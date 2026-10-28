@@ -57,7 +57,8 @@ def ensure_camera(scene, x_end: float, z_end: float, force: bool = False):
     if camera is None or camera.type != "CAMERA":
         data = bpy.data.cameras.new(CAMERA_NAME)
         camera = bpy.data.objects.new(CAMERA_NAME, data)
-        scene.collection.objects.link(camera)
+        # 与链条对象一致：加进当前激活的 collection
+        (bpy.context.collection or scene.collection).objects.link(camera)
         scene.camera = camera
 
     centre, span = frame_box(x_end, z_end)

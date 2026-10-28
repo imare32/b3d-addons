@@ -69,7 +69,8 @@ def ensure_camera(scene, span: float, target_z: float = 0.0, force: bool = False
     if camera is None or camera.type != "CAMERA":
         data = bpy.data.cameras.new(CAMERA_NAME)
         camera = bpy.data.objects.new(CAMERA_NAME, data)
-        scene.collection.objects.link(camera)
+        # 与高度场对象一致：加进当前激活的 collection
+        (bpy.context.collection or scene.collection).objects.link(camera)
         scene.camera = camera
 
     distance = float(span) * 2.0

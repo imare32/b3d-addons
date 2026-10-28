@@ -293,7 +293,7 @@ class GENR_OT_setup_scene(bpy.types.Operator):
         if camera is None or camera.type != "CAMERA":
             camera_data = bpy.data.cameras.new("Gen Rosette Camera")
             camera = bpy.data.objects.new("Gen Rosette Camera", camera_data)
-            context.collection.objects.link(camera)
+            (context.collection or scene.collection).objects.link(camera)
             scene.camera = camera
 
         camera.data.type = "ORTHO"

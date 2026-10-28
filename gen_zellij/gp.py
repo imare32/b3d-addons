@@ -112,7 +112,7 @@ def _ensure_object(name: str, collection=None):
         datas = _grease_pencils()
         data = datas.get(name) or datas.new(name)
         obj = bpy.data.objects.new(name, data)
-        target = collection or bpy.context.collection
+        target = collection or bpy.context.collection or bpy.context.scene.collection
         target.objects.link(obj)
     elif collection is not None and obj.name not in collection.objects:
         collection.objects.link(obj)

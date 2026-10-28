@@ -106,7 +106,8 @@ def build(settings, scene=None) -> dict:
         initial_dT=float(settings.initial_dT),
     )
 
-    obj = mesh.find_object() or mesh.ensure_object(scene.collection)
+    # 对象进当前激活的 collection（ensure_object 内部取 context.collection）
+    obj = mesh.find_object() or mesh.ensure_object()
     mesh.write_topology(obj, nx, ny, dx, dy)
     mesh.ensure_attributes(obj.data)
     mesh.ensure_material(obj)
