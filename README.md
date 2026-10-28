@@ -267,17 +267,28 @@ blender --command extension build --source-dir "C:\git\b3d-addons\<ext_id>" --ou
 
 ## 插件一览
 
+分两类：**生成式**（`gen_*`，一次算好结构 / 图案，参数一改就重编）与
+**模拟**（`sim_*`，逐帧推进状态，靠时间轴播放）。前缀与类别一致，新增扩展也照此命名。
+
+### 生成式（`gen_*`）
+
 | 扩展 id | 名称 | 用途 | 状态 | 依赖 / 权限 | 快捷键 |
 |---|---|---|---|---|---|
 | [`gen_zellij`](gen_zellij/README.md) | Gen Zellij | 生成式伊斯兰几何镶嵌（zellij），渲染为分层 Grease Pencil v3 | 可用（5.2.2 实测） | 无外部依赖（图案库随包） | — |
 | [`gen_rosette`](gen_rosette/README.md) | Gen Rosette | 生成式星形玫瑰线，编成上下交替的蕾丝带，渲染为分层 Grease Pencil v3 | 可用（5.2.2 实测） | 无外部依赖 | — |
-| [`sim_catenary`](sim_catenary/README.md) | Sim Catenary | XPBD 铁环相扣悬链线物理模拟，逐帧驱动 Grease Pencil 笔划（可按张力着色） | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 | [`gen_celtic`](gen_celtic/README.md) | Gen Celtic | 任意网格 → 交织绳结（编的是求值几何，输出曲线 + 几何节点扫成圆管），改源网格 / 修改器参数即重编 | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 | [`gen_dome`](gen_dome/README.md) | Gen Dome | 生成式斐波那契穹顶：球面 Voronoi 面板，逐代重划分的生长（点数递增 → 面板变多变小），几何节点按帧挑代 + 种子上立柱 | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
+
+### 模拟（`sim_*`）
+
+| 扩展 id | 名称 | 用途 | 状态 | 依赖 / 权限 | 快捷键 |
+|---|---|---|---|---|---|
+| [`sim_catenary`](sim_catenary/README.md) | Sim Catenary | XPBD 铁环相扣悬链线物理模拟，逐帧驱动 Grease Pencil 笔划（可按张力着色） | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 | [`sim_dendrite`](sim_dendrite/README.md) | Sim Dendrite | Warren 相场晶枝生长模拟，逐帧推进后画成 3D 高度场（相场 / 过冷度两种配色） | 可用（5.2.2 实测） | 可选 taichi（GPU 加速，250² 约 5 ms/帧）；缺失时回退纯 NumPy | — |
 | [`sim_game_of_life`](sim_game_of_life/README.md) | Sim Game of Life | Conway 生命游戏跑在四边形网格的面上（面 = 细胞，要求面小且均匀、每个面 8 邻居，否则图案走样），每 N 帧推进一代并实时画成面颜色；五档 B/S 规则、生死 / 年龄两种配色 | 可用（5.2.2 实测） | 可选 taichi（GPU 加速，几千面用 NumPy 已实时）；缺失时回退纯 NumPy | — |
 | [`sim_hilbert`](sim_hilbert/README.md) | Sim Hilbert | 3D 希尔伯特曲线的弹簧质点物理模拟：格子落下来撞地、坍缩、摊开，逐帧驱动一条 GP 笔划（速度 / 应变配色） | 可用（5.2.2 实测） | 可选 taichi（GPU 加速，4 阶 4.7 万弹簧 16 ms/帧）；缺失时回退纯 NumPy（3 阶 41 ms/帧） | — |
 | [`sim_jacobi`](sim_jacobi/README.md) | Sim Jacobi | 环面 Jacobi theta 除数模拟：零点小球在环面上滚动互撞，逐帧把除数写成顶点属性（光晕 / 相角 / 势井 / 相位格纹），环面按零点凹陷 + 涟漪变形 | 可用（5.2.2 实测） | 可选 taichi（GPU 加速，150×100 约 3 ms/帧）；缺失时回退纯 NumPy（8 零点约 4 ms/帧） | — |
+| [`sim_reaction_diffusion`](sim_reaction_diffusion/README.md) | Sim Reaction Diffusion | Gray-Scott 反应扩散：8 套经典 (F, k) 预设长成迷宫 / 斑点 / 蠕虫 / 孔洞，逐帧推进后画成 3D 高度场（图案 / 水墨 / 轮廓三种配色） | 可用（5.2.2 实测） | 可选 taichi（GPU 加速，200² × 32 子步约 3.4 ms/帧）；缺失时回退纯 NumPy（约 6.8 ms/帧） | — |
 
 新增一个扩展的最小步骤：
 
@@ -296,6 +307,17 @@ blender --command extension build --source-dir "C:\git\b3d-addons\<ext_id>" --ou
   `bpy.app.online_access`。
 - 依赖第三方库优先随扩展自带（`wheels`）或用 [Python 环境](#python-环境) 中的 modules 目录方式；
   避免隐式依赖系统 Python。
+- 写 **Taichi 后端**（参考 `sim_dendrite` / `sim_jacobi` / `sim_reaction_diffusion`）时有两个
+  固定约定：`taichi_solver.py` **不要**写 `from __future__ import annotations`（Taichi 直接读
+  `__annotations__` 判断 kernel 参数类型，字符串注解会报
+  `TaichiSyntaxError: Invalid type annotation`）；`import taichi` 失败时按
+  [Python 环境](#python-环境) 说的补一次 `scripts/modules` 路径，兜住 `--factory-startup`。
+- 逐顶点配色：网格属性叫 `color` 就行，但材质里 `Color Attribute` 节点的 `layer_name` 要
+  **留空**（由渲染器自动取活跃色属性），并把 `color_attributes.active_color_index` /
+  `render_color_index` 指过去。填上 `color` 或 `vertex_color` 会被 Cycles 当成自己的标准
+  顶点色名、取到空值渲染成纯黑（**只有 Cycles**，EEVEE 正常，只测 EEVEE 发现不了）。现有
+  `sim_dendrite` / `sim_jacobi` / `sim_game_of_life` 的节点填的是 `"color"`，在 Cycles 下
+  表面是单色。
 - `unregister()` 必须完整反向清理（类、面板、快捷键、处理器、定时器），否则重载会残留重复注册。
 - **新建对象一律进「当前激活的 collection」**，不要写死 `scene.collection`：生成物、预设相机、
   补光都算。统一写法是
@@ -337,9 +359,9 @@ BACKGROUND = "#E4D9D0"
 色板落在 [`_shared/palette.py`](_shared/palette.py)（含 `hex_to_linear()` / `srgb_to_linear()`）。
 Blender 扩展必须自包含，所以 `gen_zellij/palette.py`、`gen_rosette/palette.py`、
 `sim_catenary/palette.py`、`gen_celtic/palette.py`、`gen_dome/palette.py`、
-`sim_dendrite/palette.py`、`sim_game_of_life/palette.py`、`sim_hilbert/palette.py` 与
-`sim_jacobi/palette.py` 都是它的**逐字副本**（随各自的 zip 打包）：改色时九处一起改，
-`Get-FileHash` 比对即可确认同步。
+`sim_dendrite/palette.py`、`sim_game_of_life/palette.py`、`sim_hilbert/palette.py`、
+`sim_jacobi/palette.py` 与 `sim_reaction_diffusion/palette.py` 都是它的**逐字副本**
+（随各自的 zip 打包）：改色时十处一起改，`Get-FileHash` 比对即可确认同步。
 
 ## 快捷键速查
 

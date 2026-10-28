@@ -1,0 +1,23 @@
+schema_version = "1.0.0"
+
+id = "sim_reaction_diffusion"
+version = "0.1.0"
+name = "Sim Reaction Diffusion"
+tagline = "Gray-Scott reaction-diffusion patterns as a live 3D heightfield"
+maintainer = "imare32"
+type = "add-on"
+
+tags = ["Physics", "Mesh"]
+
+# 只用到 mesh 顶点 / 属性 API 与 numpy：4.2 起就有；实测环境是 5.2.2。
+blender_version_min = "4.2.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+[build]
+paths_exclude_pattern = [
+    "__pycache__/",
+    "/.git/",
+    "/.temp/",
+    "/*.zip",
+]
