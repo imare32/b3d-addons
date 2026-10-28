@@ -10,6 +10,7 @@
     "./gen_rosette",
     "./gen_dome",
     "./gen_celtic",
+    "./gen_tsubayaki",
     "./sim_game_of_life",
     "./sim_catenary",
     "./sim_dendrite",

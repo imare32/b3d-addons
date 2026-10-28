@@ -1,0 +1,23 @@
+schema_version = "1.0.0"
+
+id = "gen_tsubayaki"
+version = "0.1.0"
+name = "Gen Tsubayaki"
+tagline = "Chord-family crackle patterns that grow along the timeline"
+maintainer = "imare32"
+type = "add-on"
+
+tags = ["Grease Pencil", "Object"]
+
+# 逐点 opacity 属性与 2 点 POLY 笔划在 5.2.2 上实测通过；4.x 未验证，故设 5.0 起。
+blender_version_min = "5.0.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+[build]
+paths_exclude_pattern = [
+    "__pycache__/",
+    "/.git/",
+    "/.temp/",
+    "/*.zip",
+]
