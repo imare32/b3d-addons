@@ -282,7 +282,9 @@ def ensure_material(obj: bpy.types.Object) -> bpy.types.Material:
     bsdf = nodes.new("ShaderNodeBsdfPrincipled")
     bsdf.location = (0, 0)
     attribute = nodes.new("ShaderNodeVertexColor")
-    attribute.layer_name = "color"
+    # layer_name 故意不设（默认空）：留空时取的是活跃色属性（ensure_attributes 已设好
+    # active / render index）。填 "color" / "vertex_color" 会被 Cycles 当成它自己的标准
+    # 顶点色名，取到空值、渲染成纯黑（EEVEE 不受影响）。
     attribute.location = (-220, 0)
 
     links.new(attribute.outputs["Color"], bsdf.inputs["Base Color"])

@@ -106,8 +106,10 @@
 | `color` | FLOAT_COLOR / POINT | 线性 RGBA，Solid 的 Attribute 着色与渲染共用 |
 
 顶点编号是 `i*nv + j`（C 序），与求解器场的展平顺序一致，所以场原样写进属性、不需要重排。
-颜色只存一份：材质里 `Color Attribute("color") → Base Color`（另接一路 Emission，
-强度 0.15，让金线在渲染里有"发亮"的观感）。
+颜色只存一份：材质里 `Color Attribute → Base Color`（另接一路 Emission，强度 0.15，让金线
+在渲染里有"发亮"的观感）。节点的属性名**留空**（不设置），由渲染器自动取活跃色属性
+（`active_color_index` / `render_color_index`）：填上 `color` / `vertex_color` 会被 Cycles
+当成它自己的标准顶点色名，取到空值、渲染成纯黑（EEVEE 不受影响，只测 EEVEE 发现不了）。
 
 零点小球是独立对象（`Jacobi Zero Points`）：每个零点一份二十面体球（细分 1 级 = 42 顶点 /
 80 三角面）合并在一个网格里，每帧只改顶点位置。**不用几何节点** —— 球就是普通网格，

@@ -197,9 +197,10 @@ python -c "from sim_reaction_diffusion import solver; s=solver.create(200,200,ba
 初就是只拿 EEVEE 测过、还写错过这条结论）。
 
 本扩展的 `ensure_attributes` 会把 `color` 设成活跃色 / 渲染色，`ensure_material` 建节点时
-`layer_name` 留空。仓库现状：`sim_dendrite` / `sim_jacobi` / `sim_game_of_life` 的节点写
-的是 `layer_name = "color"`，所以在 **Cycles** 下表面是材质单色（实测 `sim_dendrite` 构建
-后渲染：整块平面没有任何顶点色，把那一栏清空后图案色立刻出现，其余什么都不同）。
+`layer_name` 留空。`sim_dendrite` / `sim_jacobi` / `sim_game_of_life` 原来写的是
+`layer_name = "color"`，在 **Cycles** 下表面是材质单色（实测 `sim_dendrite` 构建后渲染：
+整块平面没有任何顶点色，把那一栏清空后图案色立刻出现，其余什么都不同）—— 这三处已一并
+改成留空。
 
 **2. 种子不要太大也不要太碎。** 半径 ≥10 的种子在「规则阵列 / 随机撒点」下容易并成一
 大团，而一大团 v 的中间耗尽了 u，会整片熄灭（这是模型的真实行为）。半径 5 在四种模式

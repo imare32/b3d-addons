@@ -178,8 +178,7 @@ def ensure_material(obj: bpy.types.Object) -> bpy.types.Material:
     bsdf = nodes.new("ShaderNodeBsdfPrincipled")
     bsdf.location = (0, 0)
     attribute = nodes.new("ShaderNodeVertexColor")
-    # 留空 = 用活跃色属性；填名字会在 Cycles 下取到空值（见 docstring）
-    attribute.layer_name = ""
+    # layer_name 故意不设（默认空）= 取活跃色属性；填名字会在 Cycles 下取到空值（见 docstring）
     attribute.location = (-220, 0)
 
     links.new(attribute.outputs["Color"], bsdf.inputs["Base Color"])

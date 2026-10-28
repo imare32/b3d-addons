@@ -131,7 +131,9 @@ Conway 生命游戏跑在**网格的面上**：一个面就是一个细胞，至
 
 颜色属性只能落在 POINT / CORNER 域上（RNA 限制），所以写的时候按「每个 loop → 所属面」
 展开了一遍，一个面里的所有 loop 拿同一个颜色。材质里是
-`Color Attribute("color") → Base Color`，没有第二套色。
+`Color Attribute → Base Color`，没有第二套色；节点的属性名**留空**（不设置），由渲染器
+自动取活跃色属性 —— 填上 `color` / `vertex_color` 会被 Cycles 当成它自己的标准顶点色名，
+取到空值、渲染成纯黑（EEVEE 不受影响，只测 EEVEE 发现不了）。
 
 > 插件**接管**这三个属性名：目标网格上同名的属性如果类型 / 域不对（例如参考脚本留下的
 > `alive` INT、或用户自己的 BYTE_COLOR `color`），会被重建成本插件要的形状。

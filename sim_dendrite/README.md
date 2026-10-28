@@ -106,7 +106,10 @@ D  = M · [[1+cβ, −∂_ψβ], [∂_ψβ, 1+cβ]]
 | `color` | FLOAT_COLOR / POINT | 线性 RGBA，Solid 的 Attribute 着色与渲染共用 |
 
 顶点编号是 `i*ny + j`（C 序），与求解器字段的展平顺序一致，所以相场数组原样写进属性、
-不需要重排。颜色只存一份：材质里 `Color Attribute("color") → Base Color`，没有第二套色。
+不需要重排。颜色只存一份：材质里 `Color Attribute → Base Color`，没有第二套色。
+节点的属性名**留空**（不设置），由渲染器自动取活跃色属性（`active_color_index` /
+`render_color_index`）：填上 `color` / `vertex_color` 会被 Cycles 当成它自己的标准顶点色
+名，取到空值、渲染成纯黑（EEVEE 不受影响，只测 EEVEE 发现不了）。
 
 ## 模块
 

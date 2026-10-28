@@ -313,11 +313,10 @@ blender --command extension build --source-dir "C:\git\b3d-addons\<ext_id>" --ou
   `TaichiSyntaxError: Invalid type annotation`）；`import taichi` 失败时按
   [Python 环境](#python-环境) 说的补一次 `scripts/modules` 路径，兜住 `--factory-startup`。
 - 逐顶点配色：网格属性叫 `color` 就行，但材质里 `Color Attribute` 节点的 `layer_name` 要
-  **留空**（由渲染器自动取活跃色属性），并把 `color_attributes.active_color_index` /
-  `render_color_index` 指过去。填上 `color` 或 `vertex_color` 会被 Cycles 当成自己的标准
-  顶点色名、取到空值渲染成纯黑（**只有 Cycles**，EEVEE 正常，只测 EEVEE 发现不了）。现有
-  `sim_dendrite` / `sim_jacobi` / `sim_game_of_life` 的节点填的是 `"color"`，在 Cycles 下
-  表面是单色。
+  **留空**（建好节点就别动它，默认就是空的；由渲染器自动取活跃色属性），并把
+  `color_attributes.active_color_index` / `render_color_index` 指过去。填上 `color` 或
+  `vertex_color` 会被 Cycles 当成自己的标准顶点色名、取到空值渲染成纯黑（**只有 Cycles**，
+  EEVEE 正常，只测 EEVEE 发现不了）。
 - `unregister()` 必须完整反向清理（类、面板、快捷键、处理器、定时器），否则重载会残留重复注册。
 - **新建对象一律进「当前激活的 collection」**，不要写死 `scene.collection`：生成物、预设相机、
   补光都算。统一写法是
