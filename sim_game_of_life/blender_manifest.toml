@@ -1,0 +1,23 @@
+schema_version = "1.0.0"
+
+id = "sim_game_of_life"
+version = "0.1.0"
+name = "Sim Game of Life"
+tagline = "Conway's Game of Life on quad meshes, one gen per N frames"
+maintainer = "imare32"
+type = "add-on"
+
+tags = ["Physics", "Mesh"]
+
+# 只用到 mesh 属性 / 颜色属性 API 与 numpy：4.2 起就有；实测环境是 5.2.2。
+blender_version_min = "4.2.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+[build]
+paths_exclude_pattern = [
+    "__pycache__/",
+    "/.git/",
+    "/.temp/",
+    "/*.zip",
+]
