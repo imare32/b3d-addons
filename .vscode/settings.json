@@ -13,6 +13,7 @@
     "./sim_game_of_life",
     "./sim_catenary",
     "./sim_dendrite",
-    "./sim_hilbert"
+    "./sim_hilbert",
+    "./sim_jacobi"
   ]
 }
