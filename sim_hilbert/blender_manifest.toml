@@ -1,0 +1,23 @@
+schema_version = "1.0.0"
+
+id = "sim_hilbert"
+version = "0.1.0"
+name = "Sim Hilbert"
+tagline = "Mass-spring physics on a 3D Hilbert curve, inked as a GP stroke"
+maintainer = "imare32"
+type = "add-on"
+
+tags = ["Physics", "Grease Pencil"]
+
+# GP v3 的 drawing / 属性 API（drawing.attributes、set_types）在 5.x 上实测通过；4.x 未验证。
+blender_version_min = "5.0.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+[build]
+paths_exclude_pattern = [
+    "__pycache__/",
+    "/.git/",
+    "/.temp/",
+    "/*.zip",
+]
