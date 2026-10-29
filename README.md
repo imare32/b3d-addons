@@ -334,9 +334,10 @@ blender --command extension build --source-dir "C:\git\b3d-addons\<ext_id>" --ou
 
 `bpy.app.handlers` 是一串**平铺的函数对象**，Blender 没有给 handler 分区/命名空间的东西
 （`bpy.app` 里唯一带 namespace 的是 `bpy.app.driver_namespace`，那是**驱动表达式**的求值命名
-空间，跟 handler 无关，别拿它当注册表）。于是各插件只有 `frame_handler` 一个名字可用，
-「按名字清场」就会把别家的 handler 一起摘掉 —— 两个 sim 插件同时启用时，后启用的那个会把先
-启用的停掉，画面直接不动。
+空间：它适合存 GPU draw handler 的**不透明句柄**（见下一节），但存不了「哪个 app handler 是
+我的」—— app handler 本身就是函数对象，没有句柄可存）。于是各插件只有 `frame_handler` 一个
+名字可用，「按名字清场」就会把别家的 handler 一起摘掉 —— 两个 sim 插件同时启用时，后启用的
+那个会把先启用的停掉，画面直接不动。
 
 正确判据是 **`handler.__module__`**：扩展装在 `bl_ext.<repo>.<id>` 下，热重载后模块名不变、
 函数对象换新，所以模块名是唯一稳定的归属依据；顺带还能一次清掉本包注册在其它子模块里的
@@ -357,6 +358,73 @@ def purge_handlers() -> None:
 
 新插件照抄这一段即可，函数名继续叫 `frame_handler`（想再加一层保险就给函数名带插件前缀，
 防住那些还没改成模块判据的旧版本，例如 `sim_flocking` 的 `flocking_frame_handler`）。
+
+### GPU draw handler：句柄存两处（模块变量 + `driver_namespace`）
+
+要在 3D 视图里直接画东西时用 `SpaceView3D.draw_handler_add(callback, args, region_type,
+draw_type)`，它返回一个**不透明句柄**（5.2.2 里是 `PyCapsule`，`RNA_HANDLE`），只能拿这个
+句柄去 `draw_handler_remove(handle, region_type)`，否则永远删不掉。四个实测出来、必须照顾到
+的行为：
+
+1. **重复 add 会堆叠，而且句柄互不相等**：同一个函数 add 两次得到两个句柄，回调被调两次。
+   所以注册前先自愈地清一遍（和 app handler 一个道理）。
+2. **`region_type` 必须和 add 时一致**：`'WINDOW'` 的句柄用 `'HEADER'` 去删**不会当场报错**，
+   但句柄会被消耗掉，随后再删就抛
+   `ValueError: callback_remove(handler): null handler given, invalid or already removed`。
+   所以句柄要**和 region 一起存**（一个插件在多个 region 各挂一个时尤其要注意）。
+3. **`bpy.app.driver_namespace` 在文件加载时会被清空**（`read_homefile` /
+   `read_factory_settings` 之后 key 就没了，实测），而 **draw handler 在文件加载后还活着**
+   （加载后仍能成功 remove）。只把句柄存 namespace 的话，用户 File > Open 之后就再也删不掉
+   那个 handler 了 —— 所以**模块级变量才是主，namespace 只是跨「重跑脚本 / 热重载」的兜底**
+   （重跑脚本时模块变量会被重新初始化，而 namespace 还在）。
+4. namespace 是驱动表达式的求值空间，key 对驱动**可见**，所以键名一律带插件前缀。
+
+```python
+_DRAW_KEY = "sim_flocking_draw_handle"  # 键名带插件前缀
+_DRAW_REGION = "WINDOW"
+
+#: 主副本：模块变量。文件加载后仍在（namespace 会被清空）
+_HANDLE = None
+
+
+def _paint(*args) -> None:
+    ...  # 用 gpu / blf 画；回调每个 3D 视图都会被调用，别在这里做重活
+
+
+def install_draw_handler() -> None:
+    global _HANDLE
+    remove_draw_handler()  # 自愈：先清掉上一次留下的
+    _HANDLE = bpy.types.SpaceView3D.draw_handler_add(
+        _paint, (), _DRAW_REGION, "POST_PIXEL"
+    )
+    bpy.app.driver_namespace[_DRAW_KEY] = (_HANDLE, _DRAW_REGION)
+
+
+def remove_draw_handler() -> None:
+    global _HANDLE
+    stored = bpy.app.driver_namespace.get(_DRAW_KEY)
+    candidates = [_HANDLE]
+    if isinstance(stored, tuple):
+        candidates.append(stored[0])
+    elif stored is not None:
+        candidates.append(stored)
+    for handle in candidates:
+        if handle is None:
+            continue
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(handle, _DRAW_REGION)
+        except (ValueError, TypeError):
+            pass  # 已经删过了 / 句柄已被文件加载作废
+    _HANDLE = None
+    bpy.app.driver_namespace.pop(_DRAW_KEY, None)
+```
+
+调用时机：`register()` 里 `install_draw_handler()`，`unregister()` 里
+`remove_draw_handler()`（`unregister` 里的清理要能容忍二次删除，所以上面套了 `try`）。
+
+`draw_type` 按要画的东西选：`POST_PIXEL` 是 2D 叠层（像素坐标，配 `blf` 写字 / 画 HUD），
+`POST_VIEW` 是 3D 视图空间（画立体几何，要自己做 depth 处理）。两种都在**每个 3D 视图**各调
+一次，回调里别假设只有一个视图、也别做重活。
 
 ## 颜色偏好
 
