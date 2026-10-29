@@ -1,0 +1,24 @@
+schema_version = "1.0.0"
+
+id = "gen_torus_knot"
+version = "0.2.0"
+name = "Gen Torus Knot"
+tagline = "Parametric (p, q) torus knots as GP strokes or solid tubes"
+maintainer = "imare32"
+type = "add-on"
+
+tags = ["Grease Pencil", "Geometry Nodes", "Object"]
+
+# 实测 5.2.2：笔划属性按 POINT 域自定义属性写（GP v3 的 drawing.attributes），
+# 扫管走 GeometryNodeGreasePencilToCurves；4.x 的 GP v3 接口未验证，故设 5.0 起。
+blender_version_min = "5.0.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+[build]
+paths_exclude_pattern = [
+    "__pycache__/",
+    "/.git/",
+    "/.temp/",
+    "/*.zip",
+]
