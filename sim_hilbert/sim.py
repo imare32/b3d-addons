@@ -295,11 +295,21 @@ def frame_handler(scene) -> None:
 
 
 def purge_handlers() -> None:
-    """按名字移除 handler，防止重载后堆叠（重载 = 禁用 → 清模块 → 启用）。"""
+    """只移除**本包注册过**的 handler，防止重载后堆叠（重载 = 禁用 → 清模块 → 启用）。
+
+    判据是模块命名空间（``__package__`` 前缀），不是函数名：``bpy.app.handlers`` 是一串平铺
+    的函数对象，没有"按插件分区"的机制，而仓库里各 sim 插件的 handler 全叫 ``frame_handler``
+    —— 按名字清理会把别人家的也摘掉（两个 sim 插件同时启用时，后启用的会把先启用的停掉）。
+    模块名稳定（热重载后不变，函数对象换新），所以拿它判断归属。
+    """
+    package = __package__ or __name__
+
+    def ours(handler) -> bool:
+        module = getattr(handler, "__module__", "")
+        return module == package or module.startswith(package + ".")
+
     bpy.app.handlers.frame_change_pre[:] = [
-        handler
-        for handler in bpy.app.handlers.frame_change_pre
-        if getattr(handler, "__name__", "") != frame_handler.__name__
+        handler for handler in bpy.app.handlers.frame_change_pre if not ours(handler)
     ]
 
 

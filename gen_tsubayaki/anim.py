@@ -124,7 +124,7 @@ def frame_handler(scene) -> None:
 
 
 def install() -> None:
-    """挂上处理器（先清一遍同名残留，重载不会堆叠）。"""
+    """挂上处理器（先清一遍本包的残留，重载不会堆叠）。"""
     import bpy
 
     purge_handlers()
@@ -132,13 +132,22 @@ def install() -> None:
 
 
 def purge_handlers() -> None:
-    """按名字移除 handler，防止重载后堆叠（重载 = 禁用 → 清模块 → 启用）。"""
+    """只移除**本包注册过**的 handler，防止重载后堆叠（重载 = 禁用 → 清模块 → 启用）。
+
+    判据是模块命名空间（``__package__`` 前缀），不是函数名：``bpy.app.handlers`` 是一串平铺
+    的函数对象，没有"按插件分区"的机制，叫 ``frame_handler`` 的 handler 到处都是 —— 按名字清
+    理会把别人家的也摘掉。模块名稳定（热重载后不变，函数对象换新），所以拿它判断归属。
+    """
     import bpy
 
+    package = __package__ or __name__
+
+    def ours(handler) -> bool:
+        module = getattr(handler, "__module__", "")
+        return module == package or module.startswith(package + ".")
+
     bpy.app.handlers.frame_change_pre[:] = [
-        handler
-        for handler in bpy.app.handlers.frame_change_pre
-        if getattr(handler, "__name__", "") != frame_handler.__name__
+        handler for handler in bpy.app.handlers.frame_change_pre if not ours(handler)
     ]
 
 
