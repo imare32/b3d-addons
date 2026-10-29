@@ -289,6 +289,7 @@ blender --command extension build --source-dir "C:\git\b3d-addons\<ext_id>" --ou
 |---|---|---|---|---|---|
 | [`sim_catenary`](sim_catenary/README.md) | Sim Catenary | XPBD 铁环相扣悬链线物理模拟，逐帧驱动 Grease Pencil 笔划（可按张力着色） | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 | [`sim_dendrite`](sim_dendrite/README.md) | Sim Dendrite | Warren 相场晶枝生长模拟，逐帧推进后画成 3D 高度场（相场 / 过冷度两种配色） | 可用（5.2.2 实测） | 可选 taichi（GPU 加速，250² 约 5 ms/帧）；缺失时回退纯 NumPy | — |
+| [`sim_differential`](sim_differential/README.md) | Sim Differential | 差分生长：一条闭合折线在斥力 + 培养皿边界下不断分裂打褶，逐帧写成一笔闭合 GP 笔划（曲率 / 拉伸 / 单色三档配色） | 可用（5.2.2 实测） | 可选 taichi（GPU 加速，1000 节点约 8 ms/帧）；缺失时回退纯 NumPy（空间哈希，约 14 ms/帧） | — |
 | [`sim_game_of_life`](sim_game_of_life/README.md) | Sim Game of Life | Conway 生命游戏跑在四边形网格的面上（面 = 细胞，要求面小且均匀、每个面 8 邻居，否则图案走样），每 N 帧推进一代并实时画成面颜色；五档 B/S 规则、生死 / 年龄两种配色 | 可用（5.2.2 实测） | 可选 taichi（GPU 加速，几千面用 NumPy 已实时）；缺失时回退纯 NumPy | — |
 | [`sim_hilbert`](sim_hilbert/README.md) | Sim Hilbert | 3D 希尔伯特曲线的弹簧质点物理模拟：格子落下来撞地、坍缩、摊开，逐帧驱动一条 GP 笔划（速度 / 应变配色） | 可用（5.2.2 实测） | 可选 taichi（GPU 加速，4 阶 4.7 万弹簧 16 ms/帧）；缺失时回退纯 NumPy（3 阶 41 ms/帧） | — |
 | [`sim_jacobi`](sim_jacobi/README.md) | Sim Jacobi | 环面 Jacobi theta 除数模拟：零点小球在环面上滚动互撞，逐帧把除数写成顶点属性（光晕 / 相角 / 势井 / 相位格纹），环面按零点凹陷 + 涟漪变形 | 可用（5.2.2 实测） | 可选 taichi（GPU 加速，150×100 约 3 ms/帧）；缺失时回退纯 NumPy（8 零点约 4 ms/帧） | — |
@@ -366,12 +367,12 @@ Blender 扩展必须自包含，所以 `gen_zellij/palette.py`、`gen_rosette/pa
 `sim_dendrite/palette.py`、`sim_game_of_life/palette.py`、`sim_hilbert/palette.py`、
 `sim_jacobi/palette.py`、`sim_reaction_diffusion/palette.py`、
 `sim_space_colonization/palette.py`、`gen_tsubayaki/palette.py`、`gen_torus_knot/palette.py`、
-`gen_voronoi/palette.py`
+`gen_voronoi/palette.py`、`sim_differential/palette.py`
 与 `gen_interlace/palette.py`
-都是它的**逐字副本**（随各自的 zip 打包）：改色时十五处一起改，`Get-FileHash` 比对即可确认同步。
+都是它的**逐字副本**（随各自的 zip 打包）：改色时十六处一起改，`Get-FileHash` 比对即可确认同步。
 
 视口着色检查（`viewport.py`）也一样：`gen_zellij` / `gen_rosette` / `gen_tsubayaki` /
-`gen_torus_knot` / `gen_voronoi` / `gen_interlace` 共用同一份逐字副本。
+`gen_torus_knot` / `gen_voronoi` / `gen_interlace` / `sim_differential` 共用同一份逐字副本。
 
 ## 快捷键速查
 
