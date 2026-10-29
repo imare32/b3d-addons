@@ -1,0 +1,24 @@
+schema_version = "1.0.0"
+
+id = "gen_interlace"
+version = "0.2.0"
+name = "Gen Interlace"
+tagline = "Live lace weave: strands interlaced into Grease Pencil strokes"
+maintainer = "imare32"
+type = "add-on"
+
+tags = ["Grease Pencil", "Object"]
+
+# GP v3 的 drawing 属性（position / radius / vertex_color）与编辑模式下的实时写回都在
+# 5.2.2 上实测；4.x 未验证，故设 5.0 起。
+blender_version_min = "5.0.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+[build]
+paths_exclude_pattern = [
+    "__pycache__/",
+    "/.git/",
+    "/.temp/",
+    "/*.zip",
+]

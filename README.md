@@ -278,6 +278,7 @@ blender --command extension build --source-dir "C:\git\b3d-addons\<ext_id>" --ou
 | [`gen_rosette`](gen_rosette/README.md) | Gen Rosette | 生成式星形玫瑰线，编成上下交替的蕾丝带，渲染为分层 Grease Pencil v3 | 可用（5.2.2 实测） | 无外部依赖 | — |
 | [`gen_celtic`](gen_celtic/README.md) | Gen Celtic | 任意网格 → 交织绳结（编的是求值几何，输出曲线 + 几何节点扫成圆管），改源网格 / 修改器参数即重编 | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 | [`gen_dome`](gen_dome/README.md) | Gen Dome | 生成式斐波那契穹顶：球面 Voronoi 面板，逐代重划分的生长（点数递增 → 面板变多变小），几何节点按帧挑代 + 种子上立柱 | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
+| [`gen_interlace`](gen_interlace/README.md) | Gen Interlace | 生成式交错编织（纯 2D）：曲线样条或 Grease Pencil 笔划当股线，沿股线交替一上一下（奇偶求解）；被压住的那一条「平贴端头」——退到对方身外，缺口用只填不描的补片沿对方边缘裁平，或用零重叠切法；实时输出 GP 笔划（逐点 `strand_index`、逐笔划 `piece_index` / `fill_id`） | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 | [`gen_tsubayaki`](gen_tsubayaki/README.md) | Gen Tsubayaki | 生成式弦线族（两条轨道之间的弦）：单轨星图 / 按格子裁边的分块开片，`n` / `t` 由帧号闭式生长 + 逐弦墨色淡出，渲染为 Grease Pencil v3（默认深底反白 + GP 效果器辉光） | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 | [`gen_torus_knot`](gen_torus_knot/README.md) | Gen Torus Knot | 参数化环面 (p, q) 结：默认输出 Grease Pencil 笔划（每股一条闭合笔划，几何核心带 POINT 域的 `u_map` / `v_map` 两条属性），可选几何节点把笔划扫成实体管（管半径实时可调） | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 | [`gen_voronoi`](gen_voronoi/README.md) | Gen Voronoi | 生成式平面 Voronoi：网格顶点或 Grease Pencil 的点当种子，实时重划成 GP 笔划（气泡 / 边界裁剪、内缩、逐格填充，逐点带 `cell_index`）；在 GP 编辑模式里画点、拖点即长 | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
@@ -364,12 +365,13 @@ Blender 扩展必须自包含，所以 `gen_zellij/palette.py`、`gen_rosette/pa
 `sim_catenary/palette.py`、`gen_celtic/palette.py`、`gen_dome/palette.py`、
 `sim_dendrite/palette.py`、`sim_game_of_life/palette.py`、`sim_hilbert/palette.py`、
 `sim_jacobi/palette.py`、`sim_reaction_diffusion/palette.py`、
-`sim_space_colonization/palette.py`、`gen_tsubayaki/palette.py`、`gen_torus_knot/palette.py`
-与 `gen_voronoi/palette.py`
-都是它的**逐字副本**（随各自的 zip 打包）：改色时十四处一起改，`Get-FileHash` 比对即可确认同步。
+`sim_space_colonization/palette.py`、`gen_tsubayaki/palette.py`、`gen_torus_knot/palette.py`、
+`gen_voronoi/palette.py`
+与 `gen_interlace/palette.py`
+都是它的**逐字副本**（随各自的 zip 打包）：改色时十五处一起改，`Get-FileHash` 比对即可确认同步。
 
 视口着色检查（`viewport.py`）也一样：`gen_zellij` / `gen_rosette` / `gen_tsubayaki` /
-`gen_torus_knot` / `gen_voronoi` 共用同一份逐字副本。
+`gen_torus_knot` / `gen_voronoi` / `gen_interlace` 共用同一份逐字副本。
 
 ## 快捷键速查
 
