@@ -1,0 +1,24 @@
+schema_version = "1.0.0"
+
+id = "gen_voronoi"
+version = "0.1.0"
+name = "Gen Voronoi"
+tagline = "Live 2D Voronoi cells drawn as Grease Pencil strokes"
+maintainer = "imare32"
+type = "add-on"
+
+tags = ["Grease Pencil", "Object"]
+
+# GP v3 的 drawing 属性（position / radius / vertex_color / fill_id）与编辑模式下的
+# 实时写回都在 5.2.2 上实测；4.x 未验证，故设 5.0 起。
+blender_version_min = "5.0.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+[build]
+paths_exclude_pattern = [
+    "__pycache__/",
+    "/.git/",
+    "/.temp/",
+    "/*.zip",
+]
