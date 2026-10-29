@@ -294,6 +294,7 @@ blender --command extension build --source-dir "C:\git\b3d-addons\<ext_id>" --ou
 | [`sim_game_of_life`](sim_game_of_life/README.md) | Sim Game of Life | Conway 生命游戏跑在四边形网格的面上（面 = 细胞，要求面小且均匀、每个面 8 邻居，否则图案走样），每 N 帧推进一代并实时画成面颜色；五档 B/S 规则、生死 / 年龄两种配色 | 可用（5.2.2 实测） | 可选 taichi（GPU 加速，几千面用 NumPy 已实时）；缺失时回退纯 NumPy | — |
 | [`sim_hilbert`](sim_hilbert/README.md) | Sim Hilbert | 3D 希尔伯特曲线的弹簧质点物理模拟：格子落下来撞地、坍缩、摊开，逐帧驱动一条 GP 笔划（速度 / 应变配色） | 可用（5.2.2 实测） | 可选 taichi（GPU 加速，4 阶 4.7 万弹簧 16 ms/帧）；缺失时回退纯 NumPy（3 阶 41 ms/帧） | — |
 | [`sim_jacobi`](sim_jacobi/README.md) | Sim Jacobi | 环面 Jacobi theta 除数模拟：零点小球在环面上滚动互撞，逐帧把除数写成顶点属性（光晕 / 相角 / 势井 / 相位格纹），环面按零点凹陷 + 涟漪变形 | 可用（5.2.2 实测） | 可选 taichi（GPU 加速，150×100 约 3 ms/帧）；缺失时回退纯 NumPy（8 零点约 4 ms/帧） | — |
+| [`sim_pendulum`](sim_pendulum/README.md) | Sim Pendulum | 双摆相空间阵列：N×N 个理想双摆逐帧 RK4 推进，每个摆一抹 3 点 GP 折线（逐点半径 + 角速度 / 相角配色），两档初值（θ1–θ2 摆角平面 / θ1–dθ1 相空间切片）；可切「网格 + 几何节点」后端做同步开销对照 | 可用（5.2.2 实测） | 无必需依赖（NumPy 版零依赖；可选 taichi GPU：1 万摆 8.2 → 3.4 ms/帧） | — |
 | [`sim_reaction_diffusion`](sim_reaction_diffusion/README.md) | Sim Reaction Diffusion | Gray-Scott 反应扩散：8 套经典 (F, k) 预设长成迷宫 / 斑点 / 蠕虫 / 孔洞，逐帧推进后画成 3D 高度场（图案 / 水墨 / 轮廓三种配色） | 可用（5.2.2 实测） | 可选 taichi（GPU 加速，200² × 32 子步约 3.4 ms/帧）；缺失时回退纯 NumPy（约 6.8 ms/帧） | — |
 | [`sim_space_colonization`](sim_space_colonization/README.md) | Sim Space Colonization | 太空殖民生长：任意输入网格表面按面积撒吸收点，枝条逐帧长过去（贴表面 = 藤蔓 / 自由空间 = 树枝），每个分叉到枝尖画成一笔 GP（逐点半径 + 根→梢的逐点配色）；不选目标会自动建缺省输入网格 | 可用（5.2.2 实测） | 可选 scipy（KD 树，约 1.9 ms/子步）或 taichi（GPU 暴力，1.4 ms）；都缺时回退纯 NumPy（18.6 ms/子步） | — |
 
@@ -464,13 +465,13 @@ Blender 扩展必须自包含，所以 `gen_zellij/palette.py`、`gen_rosette/pa
 `sim_dendrite/palette.py`、`sim_game_of_life/palette.py`、`sim_hilbert/palette.py`、
 `sim_jacobi/palette.py`、`sim_reaction_diffusion/palette.py`、
 `sim_space_colonization/palette.py`、`gen_tsubayaki/palette.py`、`gen_torus_knot/palette.py`、
-`gen_voronoi/palette.py`、`sim_differential/palette.py`、`sim_flocking/palette.py`
-与 `gen_interlace/palette.py`
-都是它的**逐字副本**（随各自的 zip 打包）：改色时十七处一起改，`Get-FileHash` 比对即可确认同步。
+`gen_voronoi/palette.py`、`sim_differential/palette.py`、`sim_flocking/palette.py`、
+`sim_pendulum/palette.py` 与 `gen_interlace/palette.py`
+都是它的**逐字副本**（随各自的 zip 打包）：改色时十八处一起改，`Get-FileHash` 比对即可确认同步。
 
 视口着色检查（`viewport.py`）也一样：`gen_zellij` / `gen_rosette` / `gen_tsubayaki` /
-`gen_torus_knot` / `gen_voronoi` / `gen_interlace` / `sim_differential` / `sim_flocking`
-共用同一份逐字副本。
+`gen_torus_knot` / `gen_voronoi` / `gen_interlace` / `sim_differential` / `sim_flocking` /
+`sim_pendulum` 共用同一份逐字副本。
 
 ## 快捷键速查
 

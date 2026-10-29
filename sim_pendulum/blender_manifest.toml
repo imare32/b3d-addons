@@ -1,0 +1,23 @@
+schema_version = "1.0.0"
+
+id = "sim_pendulum"
+version = "0.1.0"
+name = "Sim Pendulum"
+tagline = "Double-pendulum phase-space array, inked as GP strokes"
+maintainer = "imare32"
+type = "add-on"
+
+tags = ["Physics", "Grease Pencil", "Animation"]
+
+# GP v3 的 drawing / 属性 API（drawing.attributes、set_types）在 5.x 上实测通过；4.x 未验证。
+blender_version_min = "5.0.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+[build]
+paths_exclude_pattern = [
+    "__pycache__/",
+    "/.git/",
+    "/.temp/",
+    "/*.zip",
+]
