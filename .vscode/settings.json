@@ -12,6 +12,7 @@
     "./gen_celtic",
     "./gen_tsubayaki",
     "./sim_game_of_life",
+    "./sim_flocking",
     "./sim_catenary",
     "./sim_dendrite",
     "./sim_hilbert",
