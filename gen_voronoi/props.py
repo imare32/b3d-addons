@@ -372,7 +372,8 @@ def _cast(name: str, value, current):
     if isinstance(current, str):
         prop = GenVoronoiSettings.bl_rna.properties.get(name)
         valid = {item.identifier for item in getattr(prop, "enum_items", [])}
-        text = str(value)
+        # 老数据可能被存成了字符列表（见 store_design），拼回来再看合不合法
+        text = value if isinstance(value, str) else "".join(str(part) for part in value)
         return text if not valid or text in valid else current
     if isinstance(current, int):
         number = int(value)
@@ -391,10 +392,17 @@ def _cast(name: str, value, current):
 
 
 def store_design(obj, settings) -> None:
-    """把面板参数记到生成对象上（换文件 / 换场景后还能回读）。"""
+    """把面板参数记到生成对象上（换文件 / 换场景后还能回读）。
+
+    枚举值也是 ``str``，而 ``str`` 有 ``__len__`` —— 顺手 ``list()`` 会把它存成
+    ``["C", "U", "B", "I", "C"]``，回读时就认不出来了（实测踩过）。字符串必须原样存。
+    """
     for name in GEOMETRY_FIELDS + LIVE_FIELDS:
         value = getattr(settings, name)
-        obj[DESIGN_KEYS[name]] = list(value) if hasattr(value, "__len__") else value
+        if isinstance(value, str) or not hasattr(value, "__len__"):
+            obj[DESIGN_KEYS[name]] = value
+        else:
+            obj[DESIGN_KEYS[name]] = list(value)
 
 
 def read_design(obj, settings) -> int:
