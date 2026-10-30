@@ -20,7 +20,9 @@ from __future__ import annotations
 __all__ = [
     "SOLID",
     "VERTEX",
+    "WORLD",
     "ensure_vertex_colour",
+    "ensure_world_background",
     "solid_spaces",
 ]
 
@@ -28,6 +30,7 @@ VIEW_3D = "VIEW_3D"
 SOLID = "SOLID"
 MATERIAL = "MATERIAL"
 VERTEX = "VERTEX"
+WORLD = "WORLD"
 
 #: ``ensure_vertex_colour`` 的结果。
 FIXED = "fixed"
@@ -83,3 +86,22 @@ def ensure_vertex_colour(context) -> tuple[str, int]:
     if all(space.shading.color_type == VERTEX for space in solid):
         return ALREADY, 0
     return OTHER, 0
+
+
+def ensure_world_background(context) -> int:
+    """把 3D 视图的背景从「主题」切成「世界」，返回改了几个视图。
+
+    Solid 模式的背景默认取**主题**色块（``shading.background_type == 'THEME'``），
+    而 Blender 默认是暗色主题 —— 图案是深色线条，暗底上几乎看不清。「场景预设」
+    已经把世界色铺成画布底色（项目色板的画布色），切到「世界」就正好是浅底配深线，
+    所见即所得；不切的话只有切到渲染 / 材质预览才看得见那张底色。
+
+    只动 Solid 视图（材质预览 / 渲染本来就吃世界光）；没有 3D 视图时返回 0。
+    """
+    fixed = 0
+    for space in solid_spaces(context):
+        shading = space.shading
+        if getattr(shading, "background_type", None) != WORLD:
+            shading.background_type = WORLD
+            fixed += 1
+    return fixed

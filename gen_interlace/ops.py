@@ -292,20 +292,6 @@ def _paint_canvas(scene) -> None:
     world.color = colour
 
 
-def _theme_to_world(context) -> int:
-    """把 3D 视图的背景从「主题」切成「世界」，返回改了几个视图。
-
-    Solid 模式的背景默认取**主题**色块，而 Blender 默认是暗色主题 —— 股线是墨玄，
-    暗底上几乎看不见。``_paint_canvas`` 已经把世界色铺成画布底色（``BACKGROUND``），
-    切到「世界」就正好是浅底配深线。
-    """
-    fixed = 0
-    for space in viewport.solid_spaces(context):
-        shading = space.shading
-        if getattr(shading, "background_type", None) != "WORLD":
-            shading.background_type = "WORLD"
-            fixed += 1
-    return fixed
 
 
 def _extent(settings):
@@ -378,7 +364,7 @@ class GENI_OT_setup_scene(bpy.types.Operator):
         camera.rotation_euler = (0.0, 0.0, 0.0)
 
         _paint_canvas(scene)
-        views = _theme_to_world(context)
+        views = viewport.ensure_world_background(context)
 
         scene.render.resolution_x = 2048
         scene.render.resolution_y = 2048

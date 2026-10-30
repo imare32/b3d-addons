@@ -269,8 +269,16 @@ def write(obj, stroke_sets, frame: int = 1) -> dict:
             np.ones(len(stroke_set.points), np.float32),
         )
         _write_points(drawing, stroke_set)
-        for index, closed in enumerate(stroke_set.cyclic):
-            drawing.strokes[index].cyclic = bool(closed)
+        # 闭合标记整层一次写完：``cyclic`` 是 CURVE 域的 BOOLEAN 属性。
+        # 逐笔划写（``stroke.cyclic = ...``）是 RNA 调用，几千笔时是几十毫秒的纯开销。
+        _attribute(
+            drawing,
+            "cyclic",
+            "BOOLEAN",
+            "CURVE",
+            "value",
+            np.array(stroke_set.cyclic, dtype=bool),
+        )
         counts[stroke_set.layer] = len(stroke_set.counts)
 
     view_layer = bpy.context.view_layer

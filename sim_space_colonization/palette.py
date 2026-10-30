@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 __all__ = [
+    "AMBER",
     "AZURITE",
     "BACKGROUND",
     "CINNABAR",
@@ -21,6 +22,7 @@ __all__ = [
     "MOSS",
     "OCHRE",
     "PALETTE",
+    "PAPER",
     "SILK",
     "hex_to_linear",
     "hex_to_rgb",
@@ -31,11 +33,16 @@ INK = "#2B2B2B"  # 墨玄
 CINNABAR = "#C85A4B"  # 朱砂
 AZURITE = "#3E5C6B"  # 石青
 OCHRE = "#C49A45"  # 赭石
+AMBER = "#E8B362"  # 琥珀 —— 明亮暖金，浅画布上的默认主线色
 MOSS = "#5A7052"  # 苔绿
 SILK = "#F4F0EA"  # 绢白
 
 #: 画布底色 —— 作品统一用它，避免每个后端各写一个白。
 BACKGROUND = "#E4D9D0"
+
+#: 更浅的一档画布：接近纸白、几乎无色偏。线稿（细线 + 暖金）在它上面反差最大；
+#: 用来画"填色块"的图案就别用它 —— 绢白的本体压上去会看不出边界。
+PAPER = "#F9F7F3"
 
 #: 常量名 → 色值，给需要遍历色板的场合用（导出色卡、做一个配色面板）。
 PALETTE = {
@@ -43,9 +50,11 @@ PALETTE = {
     "CINNABAR": CINNABAR,
     "AZURITE": AZURITE,
     "OCHRE": OCHRE,
+    "AMBER": AMBER,
     "MOSS": MOSS,
     "SILK": SILK,
     "BACKGROUND": BACKGROUND,
+    "PAPER": PAPER,
 }
 
 

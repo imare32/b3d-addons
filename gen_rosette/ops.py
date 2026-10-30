@@ -313,11 +313,15 @@ class GENR_OT_setup_scene(bpy.types.Operator):
             gp_settings.aa_samples = 16
 
         _paint_canvas(scene)
+        # 背景切到「世界」：否则 Solid 模式仍按主题色块铺底，看不见刚铺好的画布底色
+        world_views = viewport.ensure_world_background(context)
 
         message = (
             f"camera ortho_scale={span:g}, 2048x2048, Standard view transform, "
             f"background {BACKGROUND}"
         )
         message += _viewport_note(view_status, view_fixed)
+        if world_views:
+            message += f" | viewport background set to World ({world_views} view(s))"
         self.report({"INFO"}, message)
         return {"FINISHED"}

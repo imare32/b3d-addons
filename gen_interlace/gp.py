@@ -67,6 +67,10 @@ _ATTR_STRAND = "strand_index"
 _ATTR_PIECE = "piece_index"
 _ATTR_FILL_ID = "fill_id"
 _ATTR_FILL_COLOR = "fill_color"
+_ATTR_CYCLIC = "cyclic"
+_ATTR_START_CAP = "start_cap"
+_ATTR_END_CAP = "end_cap"
+_ATTR_HIDE_STROKE = "hide_stroke"
 
 _POINT = "POINT"
 _CURVE = "CURVE"
@@ -285,13 +289,23 @@ def build_object(
     # 端帽：CURVE 域的 start_cap / end_cap 是字节属性，实测 0 = 圆头、1 = 平头。
     # 切口用平头（一刀切断的感觉），圆头会往外多画半个带宽 —— 那半边由
     # interlace.cut_pieces 的 round_caps 参数补进切口里。
+    #
+    # 这四条（闭合 / 两个端帽 / 只填不描）都是**逐笔划属性**，整层一次写完。
+    # **不要**写成 ``for stroke, piece in zip(...): stroke.start_cap = ...`` ——
+    # 逐笔划是 RNA 调用，实测 3600 笔 22 ms、批量 0.03 ms；补片一多（默认档 84 块，
+    # 20 股线时上千块）那点开销就很显眼。
     cap = 0 if round_caps else 1
-    for stroke, piece in zip(drawing.strokes, pieces):
-        stroke.cyclic = bool(piece.cyclic)
-        stroke.start_cap = cap
-        stroke.end_cap = cap
-        # 补片只填不描（实测：hide_stroke + fill_id 生效，关掉描边后只剩填充色）
-        stroke.hide_stroke = bool(piece.fill)
+    _ensure(drawing, _ATTR_CYCLIC, "BOOLEAN", _CURVE).data.foreach_set(
+        "value", np.array([bool(piece.cyclic) for piece in pieces], dtype=bool)
+    )
+    for name in (_ATTR_START_CAP, _ATTR_END_CAP):
+        _ensure(drawing, name, "INT8", _CURVE).data.foreach_set(
+            "value", np.full(len(pieces), cap, dtype=np.int8)
+        )
+    # 补片只填不描（实测：hide_stroke + fill_id 生效，关掉描边后只剩填充色）
+    _ensure(drawing, _ATTR_HIDE_STROKE, "BOOLEAN", _CURVE).data.foreach_set(
+        "value", np.array([bool(piece.fill) for piece in pieces], dtype=bool)
+    )
     return obj
 
 

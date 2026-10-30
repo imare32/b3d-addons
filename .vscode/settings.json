@@ -7,6 +7,7 @@
   // 要加载的扩展目录（相对工作区根）。加了新扩展就补一行。
   "blender.addonFolders": [
     "./gen_zellij",
+    "./gen_girih",
     "./gen_rosette",
     "./gen_dome",
     "./gen_celtic",

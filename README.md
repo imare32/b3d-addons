@@ -10,6 +10,8 @@
 
 ## 目录结构
 
+临时文件放到 .temp/ 目录下
+
 ```text
 b3d-addons/
 ├─ <ext_id>/                 # 一个子目录 = 一个扩展，目录名必须与 manifest 的 id 一致
@@ -20,6 +22,7 @@ b3d-addons/
 ├─ _shared/                  # 可选，多个插件共用的 Python 包（链接进 scripts/modules）
 ├─ .vscode/settings.json     # 可选，开发机配置（见 VSCode 插件开发）
 ├─ pyproject.toml            # 可选，ruff 格式化 / uv 索引配置
+├─ GEN_TECH.md               # 生成式插件技术报告（GP 底座 / 各插件算法 / 交织专题）
 ├─ .gitignore
 └─ README.md
 ```
@@ -279,6 +282,7 @@ blender --command extension build --source-dir "C:\git\b3d-addons\<ext_id>" --ou
 | [`gen_celtic`](gen_celtic/README.md) | Gen Celtic | 任意网格 → 交织绳结（编的是求值几何，输出曲线 + 几何节点扫成圆管），改源网格 / 修改器参数即重编 | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 | [`gen_dome`](gen_dome/README.md) | Gen Dome | 生成式斐波那契穹顶：球面 Voronoi 面板，逐代重划分的生长（点数递增 → 面板变多变小），几何节点按帧挑代 + 种子上立柱 | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 | [`gen_interlace`](gen_interlace/README.md) | Gen Interlace | 生成式交错编织（纯 2D）：曲线样条或 Grease Pencil 笔划当股线，沿股线交替一上一下（奇偶求解）；被压住的那一条「平贴端头」——退到对方身外，缺口用只填不描的补片沿对方边缘裁平，或用零重叠切法；实时输出 GP 笔划（逐点 `strand_index`、逐笔划 `piece_index` / `fill_id`） | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
+| [`gen_girih`](gen_girih/README.md) | Gen Girih | 生成式 girih 星形纹样：10 种阿基米德镶嵌 + Hankin 射线（接触角 / 双线间隙），追出长股线后按「一上一下」真切缺口（切口 + 端头补片 + 蕾丝边），三种样式 / 星形填充（可按边数分色）/ 七套配色 / 接触角扫掠；几何移植自 islamic-patterns（MIT） | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 | [`gen_tsubayaki`](gen_tsubayaki/README.md) | Gen Tsubayaki | 生成式弦线族（两条轨道之间的弦）：单轨星图 / 按格子裁边的分块开片，`n` / `t` 由帧号闭式生长 + 逐弦墨色淡出，渲染为 Grease Pencil v3（默认深底反白 + GP 效果器辉光） | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 | [`gen_torus_knot`](gen_torus_knot/README.md) | Gen Torus Knot | 参数化环面 (p, q) 结：默认输出 Grease Pencil 笔划（每股一条闭合笔划，几何核心带 POINT 域的 `u_map` / `v_map` 两条属性），可选几何节点把笔划扫成实体管（管半径实时可调） | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 | [`gen_voronoi`](gen_voronoi/README.md) | Gen Voronoi | 生成式平面 Voronoi：网格顶点或 Grease Pencil 的点当种子，实时重划成 GP 笔划（气泡 / 边界裁剪、内缩、逐格填充，逐点带 `cell_index`）；在 GP 编辑模式里画点、拖点即长 | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
@@ -460,18 +464,14 @@ BACKGROUND = "#E4D9D0"
 - 画布底色只有一个 `BACKGROUND`；插件需要"白"时用 `SILK`，不要另写纯白。
 
 色板落在 [`_shared/palette.py`](_shared/palette.py)（含 `hex_to_linear()` / `srgb_to_linear()`）。
-Blender 扩展必须自包含，所以 `gen_zellij/palette.py`、`gen_rosette/palette.py`、
-`sim_catenary/palette.py`、`gen_celtic/palette.py`、`gen_dome/palette.py`、
-`sim_dendrite/palette.py`、`sim_game_of_life/palette.py`、`sim_hilbert/palette.py`、
-`sim_jacobi/palette.py`、`sim_reaction_diffusion/palette.py`、
-`sim_space_colonization/palette.py`、`gen_tsubayaki/palette.py`、`gen_torus_knot/palette.py`、
-`gen_voronoi/palette.py`、`sim_differential/palette.py`、`sim_flocking/palette.py`、
-`sim_pendulum/palette.py` 与 `gen_interlace/palette.py`
-都是它的**逐字副本**（随各自的 zip 打包）：改色时十八处一起改，`Get-FileHash` 比对即可确认同步。
+Blender 扩展必须自包含，所以每个插件目录下都有一份 `palette.py`（当前 **19 份**，含 `gen_girih`
+与全部 `sim_*`），都是它的**逐字副本**（随各自的 zip 打包）：改色时十九处一起改，
+`Get-FileHash` 比对即可确认同步。
 
-视口着色检查（`viewport.py`）也一样：`gen_zellij` / `gen_rosette` / `gen_tsubayaki` /
-`gen_torus_knot` / `gen_voronoi` / `gen_interlace` / `sim_differential` / `sim_flocking` /
-`sim_pendulum` 共用同一份逐字副本。
+视口着色检查（`viewport.py`）也一样：`gen_*` 与 `sim_*` 共 **17 份**逐字副本，同样整批同步。
+
+技术细节（GP v3 属性表与实测行为、各插件算法、交织专题、性能与调试清单）见
+[`GEN_TECH.md`](GEN_TECH.md)。
 
 ## 快捷键速查
 

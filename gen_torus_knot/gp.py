@@ -191,8 +191,12 @@ def build_object(
     _set_points(drawing, ATTR_U, "FLOAT", "value", knot.u_map, 0.0)
     _set_points(drawing, ATTR_V, "FLOAT", "value", knot.v_map, 0.0)
 
-    for stroke in drawing.strokes:
-        stroke.cyclic = bool(knot.closed)
+    # 闭合标记整层一次写完：``cyclic`` 是 CURVE 域的 BOOLEAN 属性。
+    # 逐笔划写（``stroke.cyclic = ...``）是 RNA 调用，笔划一多就是几十毫秒。
+    cyclic = drawing.attributes.get("cyclic")
+    if cyclic is None:
+        cyclic = drawing.attributes.new("cyclic", "BOOLEAN", "CURVE")
+    cyclic.data.foreach_set("value", np.full(len(counts), bool(knot.closed), dtype=bool))
 
     return obj
 

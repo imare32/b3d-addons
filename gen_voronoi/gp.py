@@ -281,8 +281,11 @@ def build_object(
             "color", np.tile(np.asarray(rgba, np.float32), (len(cells), 1)).reshape(-1)
         )
 
-    for stroke in drawing.strokes:
-        stroke.cyclic = True
+    # 闭合标记整层一次写完：``cyclic`` 是 CURVE 域的 BOOLEAN 属性。
+    # 逐笔划写（``stroke.cyclic = ...``）是 RNA 调用，格子一多就白白多出几十毫秒。
+    _ensure(drawing, "cyclic", "BOOLEAN", _CURVE).data.foreach_set(
+        "value", np.ones(len(cells), dtype=bool)
+    )
 
     return obj
 
