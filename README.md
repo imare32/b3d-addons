@@ -23,6 +23,7 @@ b3d-addons/
 ├─ .vscode/settings.json     # 可选，开发机配置（见 VSCode 插件开发）
 ├─ pyproject.toml            # 可选，ruff 格式化 / uv 索引配置
 ├─ GEN_TECH.md               # 生成式插件技术报告（GP 底座 / 各插件算法 / 交织专题）
+├─ SIM_TECH.md               # 模拟类插件技术报告（状态契约 / 各插件算法 / 后端与性能）
 ├─ .gitignore
 └─ README.md
 ```
@@ -286,6 +287,7 @@ blender --command extension build --source-dir "C:\git\b3d-addons\<ext_id>" --ou
 | [`gen_tsubayaki`](gen_tsubayaki/README.md) | Gen Tsubayaki | 生成式弦线族（两条轨道之间的弦）：单轨星图 / 按格子裁边的分块开片，`n` / `t` 由帧号闭式生长 + 逐弦墨色淡出，渲染为 Grease Pencil v3（默认深底反白 + GP 效果器辉光） | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 | [`gen_torus_knot`](gen_torus_knot/README.md) | Gen Torus Knot | 参数化环面 (p, q) 结：默认输出 Grease Pencil 笔划（每股一条闭合笔划，几何核心带 POINT 域的 `u_map` / `v_map` 两条属性），可选几何节点把笔划扫成实体管（管半径实时可调） | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 | [`gen_voronoi`](gen_voronoi/README.md) | Gen Voronoi | 生成式平面 Voronoi：网格顶点或 Grease Pencil 的点当种子，实时重划成 GP 笔划（气泡 / 边界裁剪、内缩、逐格填充，逐点带 `cell_index`）；在 GP 编辑模式里画点、拖点即长 | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
+| [`gen_fractal_family`](gen_fractal_family/README.md) | Gen Fractal Family | 复整数「基因」生成分形曲线家族（G 高斯 / E 艾森斯坦点阵，96 条经典预设）：视口 **HUD** 里直接拖格点上的节点、点 R/M 切标记、滚轮换等级；预览（默认关闭）是 `POST_VIEW` 立即模式绘制（**不建任何临时对象**），输出曲线 / 每级对象 / 形态键生长动画 | 可用（5.2.2 实测） | 剪贴板权限（粘贴基因）；无外部依赖（用 Blender 自带 numpy） | — |
 
 ### 模拟（`sim_*`）
 
@@ -464,14 +466,15 @@ BACKGROUND = "#E4D9D0"
 - 画布底色只有一个 `BACKGROUND`；插件需要"白"时用 `SILK`，不要另写纯白。
 
 色板落在 [`_shared/palette.py`](_shared/palette.py)（含 `hex_to_linear()` / `srgb_to_linear()`）。
-Blender 扩展必须自包含，所以每个插件目录下都有一份 `palette.py`（当前 **19 份**，含 `gen_girih`
-与全部 `sim_*`），都是它的**逐字副本**（随各自的 zip 打包）：改色时十九处一起改，
+Blender 扩展必须自包含，所以每个插件目录下都有一份 `palette.py`（当前 **20 份**，含 `gen_girih`
+与全部 `sim_*`），都是它的**逐字副本**（随各自的 zip 打包）：改色时二十处一起改，
 `Get-FileHash` 比对即可确认同步。
 
-视口着色检查（`viewport.py`）也一样：`gen_*` 与 `sim_*` 共 **17 份**逐字副本，同样整批同步。
+视口着色检查（`viewport.py`）也一样：`gen_*` 与 `sim_*` 共 **18 份**逐字副本，同样整批同步。
 
-技术细节（GP v3 属性表与实测行为、各插件算法、交织专题、性能与调试清单）见
-[`GEN_TECH.md`](GEN_TECH.md)。
+技术细节见两份报告：生成式（GP v3 属性表与实测行为、各插件算法、交织专题）见
+[`GEN_TECH.md`](GEN_TECH.md)；模拟（`STATE` 契约、逐帧链路、双后端与数值、性能与调试清单）见
+[`SIM_TECH.md`](SIM_TECH.md)。
 
 ## 快捷键速查
 

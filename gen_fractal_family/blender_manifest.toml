@@ -1,0 +1,27 @@
+schema_version = "1.0.0"
+
+id = "gen_fractal_family"
+version = "0.1.0"
+name = "Gen Fractal Family"
+tagline = "Fractal curves from complex-integer genes, edited in a viewport HUD"
+maintainer = "imare32"
+type = "add-on"
+
+tags = ["Add Curve", "Object"]
+
+# 曲线与形态键 API 在 4.2 就有；HUD 只用到 gpu / blf 的稳定接口。
+blender_version_min = "4.2.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+# 「粘贴基因」读剪贴板里的一串基因（形如 "G 1 0 0 0 0 1 1 0"）。
+[permissions]
+clipboard = "Paste gene strings copied from another file or the documentation"
+
+[build]
+paths_exclude_pattern = [
+    "__pycache__/",
+    "/.git/",
+    "/.temp/",
+    "/*.zip",
+]
