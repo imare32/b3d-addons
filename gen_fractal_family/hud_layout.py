@@ -332,7 +332,7 @@ def screen_to_lattice(domain, x, y, origin_x, origin_y, zoom):
 def snap(domain, x, y, origin_x, origin_y, zoom):
     """屏幕像素 → 最近的整数格点。"""
     a, b = screen_to_lattice(domain, x, y, origin_x, origin_y, zoom)
-    return int(round(a)), int(round(b))
+    return round(a), round(b)  # round(float) 已经是 int，不必再套一层
 
 
 def auto_zoom(domain, nodes, available_w, available_h):

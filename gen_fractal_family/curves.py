@@ -119,7 +119,7 @@ class _Segment:
     ctrl2: Vector
     end: Vector
 
-    def partial(self, t0: float = 0.0, t1: float = 1.0) -> "_Segment":
+    def partial(self, t0: float = 0.0, t1: float = 1.0) -> _Segment:
         """取 ``[t0, t1]`` 那一小段（de Casteljau 展开后的闭式）。"""
         p0, p1, p2, p3 = self.start, self.ctrl1, self.ctrl2, self.end
         if t0 > t1:

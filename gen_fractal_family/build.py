@@ -228,13 +228,13 @@ def rebuild(settings, *, mode: str | None = None, collection=None) -> dict:
     if objects:
         bpy.context.view_layer.objects.active = objects[0]
 
-    settings.last_points = int(len(lines[-1]))
+    settings.last_points = len(lines[-1])
     settings.last_level = level
     settings.last_ms = (time.perf_counter() - started) * 1000.0
     settings.dirty = False
     return {
         "objects": objects,
-        "points": int(len(lines[-1])),
+        "points": len(lines[-1]),
         "level": level,
         "ms": settings.last_ms,
     }

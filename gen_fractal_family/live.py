@@ -75,7 +75,7 @@ def cancel_timer() -> None:
 
 def _tick():
     """timer 回调：转给**当前**模块的实现（热重载后旧回调也不会跑旧代码）。"""
-    from . import live  # 自己 import 自己：拿到的永远是当前模块
+    from . import live  # noqa: PLW0406 —— 故意自己 import 自己：拿到的永远是当前模块
 
     return live.run()
 

@@ -593,7 +593,7 @@ class GFF_OT_hud(bpy.types.Operator):
             region = getattr(context, "region", None)
             if region is not None:
                 session["size"] = [region.width, region.height]
-            panel_x, panel_y, panel_w, panel_h = layout["panel"]
+            _panel_x, _panel_y, panel_w, panel_h = layout["panel"]
             area_w, area_h = session["size"]
             session["origin"] = [
                 max(-panel_w + 80.0, min(x - self._drag_offset[0], area_w - 80.0)),

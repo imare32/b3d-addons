@@ -99,7 +99,7 @@ class ComplexInteger:
         """``(a, b)``，写进 RNA 的 ``IntVectorProperty`` / 存盘用。"""
         return self.a, self.b
 
-    def __add__(self, other: "ComplexInteger") -> "ComplexInteger":
+    def __add__(self, other: ComplexInteger) -> ComplexInteger:
         return ComplexInteger(self.a + other.a, self.b + other.b, self.domain)
 
     def __eq__(self, other) -> bool:
@@ -135,7 +135,7 @@ def lattice_from_xy(domain: str, x: float, y: float) -> tuple[float, float]:
 def snap_to_lattice(domain: str, x: float, y: float) -> tuple[int, int]:
     """平面坐标 → 最近的整数格点 ``(a, b)``（HUD 拖动时的吸附）。"""
     a, b = lattice_from_xy(domain, x, y)
-    return int(round(a)), int(round(b))
+    return round(a), round(b)  # round(float) 已经是 int，不必再套一层
 
 
 # ---------------------------------------------------------------------------
@@ -265,7 +265,7 @@ class Affine2D:
         self.offset = np.zeros(2) if offset is None else np.asarray(offset, dtype=float)
 
     @classmethod
-    def from_segments(cls, src_start, src_end, tgt_start, tgt_end) -> "Affine2D":
+    def from_segments(cls, src_start, src_end, tgt_start, tgt_end) -> Affine2D:
         """把 ``src_start → src_end`` 对齐到 ``tgt_start → tgt_end``。"""
         src = np.asarray(src_end, dtype=float) - np.asarray(src_start, dtype=float)
         tgt = np.asarray(tgt_end, dtype=float) - np.asarray(tgt_start, dtype=float)

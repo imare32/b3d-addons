@@ -26,8 +26,8 @@ from __future__ import annotations
 import math
 import os
 
-import bpy
 import blf
+import bpy
 import gpu
 from gpu_extras.batch import batch_for_shader
 

@@ -17,7 +17,14 @@ HUD），写进去的都是同一份 ``items``。
 
 import bpy
 
-from .lattice import DOMAINS, ComplexInteger, FractalGenerator, format_gene, gene_family, parse_gene
+from .lattice import (
+    DOMAINS,
+    ComplexInteger,
+    FractalGenerator,
+    format_gene,
+    gene_family,
+    parse_gene,
+)
 from .palette import CINNABAR, hex_to_rgb
 from .presets import DEFAULT_GENES, GENES_BY_NAME
 
