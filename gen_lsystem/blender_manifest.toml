@@ -1,0 +1,24 @@
+schema_version = "1.0.0"
+
+id = "gen_lsystem"
+version = "0.1.1"
+name = "Gen L-System"
+tagline = "L-system rewriting + turtle as tapered Grease Pencil strokes"
+maintainer = "imare32"
+type = "add-on"
+
+tags = ["Grease Pencil", "Object"]
+
+# 实测 5.2.2：笔划属性按 POINT 域自定义属性写（GP v3 的 drawing.attributes），
+# 4.x 的 GP v3 接口未验证，故设 5.0 起。
+blender_version_min = "5.0.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+[build]
+paths_exclude_pattern = [
+    "__pycache__/",
+    "/.git/",
+    "/.temp/",
+    "/*.zip",
+]

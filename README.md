@@ -288,6 +288,7 @@ blender --command extension build --source-dir "C:\git\b3d-addons\<ext_id>" --ou
 | [`gen_torus_knot`](gen_torus_knot/README.md) | Gen Torus Knot | 参数化环面 (p, q) 结：默认输出 Grease Pencil 笔划（每股一条闭合笔划，几何核心带 POINT 域的 `u_map` / `v_map` 两条属性），可选几何节点把笔划扫成实体管（管半径实时可调） | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 | [`gen_voronoi`](gen_voronoi/README.md) | Gen Voronoi | 生成式平面 Voronoi：网格顶点或 Grease Pencil 的点当种子，实时重划成 GP 笔划（气泡 / 边界裁剪、内缩、逐格填充，逐点带 `cell_index`）；在 GP 编辑模式里画点、拖点即长 | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 | [`gen_fractal_family`](gen_fractal_family/README.md) | Gen Fractal Family | 复整数「基因」生成分形曲线家族（G 高斯 / E 艾森斯坦点阵，96 条经典预设）：视口 **HUD** 里直接拖格点上的节点、点 R/M 切标记、滚轮换等级；预览（默认关闭）是 `POST_VIEW` 立即模式绘制（**不建任何临时对象**），输出曲线 / 每级对象 / 形态键生长动画 | 可用（5.2.2 实测） | 剪贴板权限（粘贴基因）；无外部依赖（用 Blender 自带 numpy） | — |
+| [`gen_lsystem`](gen_lsystem/README.md) | Gen L-System | L-system（公理 + 产生式 + 条件 + 参数表达式）→ turtle 解释成折线，输出 Grease Pencil 笔划：每条分支一笔、**粗细逐点变化**（`!` / `#` / `¤`），可选按粗细 / 按深度 / 按进度三档渐变（进度按弧长逐笔归一）；十套 ABOP 预设、2D 俯视 / 3D 四分之三视角两档场景预设、参数一改自动重算 | 可用（5.2.2 实测） | 无外部依赖 | — |
 
 ### 模拟（`sim_*`）
 
@@ -464,13 +465,14 @@ BACKGROUND = "#E4D9D0"
 - 色值一律写 sRGB 十六进制；写进 Blender 的颜色属性（`vertex_color`、材质、世界背景）
   前先转线性，否则整体发白（换算见 [gen_zellij 的颜色约定](gen_zellij/README.md)）。
 - 画布底色只有一个 `BACKGROUND`；插件需要"白"时用 `SILK`，不要另写纯白。
+  唯一的例外是线稿插件 `gen_lsystem`：它全程不出填色块，画布默认就用绢白 `SILK`（见其 README）。
 
 色板落在 [`_shared/palette.py`](_shared/palette.py)（含 `hex_to_linear()` / `srgb_to_linear()`）。
-Blender 扩展必须自包含，所以每个插件目录下都有一份 `palette.py`（当前 **20 份**，含 `gen_girih`
-与全部 `sim_*`），都是它的**逐字副本**（随各自的 zip 打包）：改色时二十处一起改，
+Blender 扩展必须自包含，所以每个插件目录下都有一份 `palette.py`（当前 **21 份**，含 `gen_girih`
+与全部 `sim_*`），都是它的**逐字副本**（随各自的 zip 打包）：改色时二十一处一起改，
 `Get-FileHash` 比对即可确认同步。
 
-视口着色检查（`viewport.py`）也一样：`gen_*` 与 `sim_*` 共 **18 份**逐字副本，同样整批同步。
+视口着色检查（`viewport.py`）也一样：`gen_*` 与 `sim_*` 共 **19 份**逐字副本，同样整批同步。
 
 技术细节见两份报告：生成式（GP v3 属性表与实测行为、各插件算法、交织专题）见
 [`GEN_TECH.md`](GEN_TECH.md)；模拟（`STATE` 契约、逐帧链路、双后端与数值、性能与调试清单）见

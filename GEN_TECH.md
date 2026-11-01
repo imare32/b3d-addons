@@ -3,15 +3,15 @@
 本文是仓库里**全部生成式插件**的技术总览：它们共享什么、各自怎么算、哪些是真几何、哪些
 是画法，以及 Grease Pencil（GP）v3 上实测踩过的坑。
 
-九个插件（`gen_celtic` / `gen_dome` / `gen_girih` / `gen_interlace` / `gen_rosette` /
-`gen_torus_knot` / `gen_tsubayaki` / `gen_voronoi` / `gen_zellij`）都按同一套分层写：
+十个插件（`gen_celtic` / `gen_dome` / `gen_girih` / `gen_interlace` / `gen_lsystem` /
+`gen_rosette` / `gen_torus_knot` / `gen_tsubayaki` / `gen_voronoi` / `gen_zellij`）都按同一套分层写：
 纯算法层不 import `bpy`、`Shape` 契约、`gp.py` 后端、两档参数、场景预设。
 
 全文分四部分：
 
 | 部分 | 内容 | 读者 |
 |---|---|---|
-| 一 · 共同底座 | 九个插件一览、分层、`Shape` 契约、GP v3 数据映射、参数分档、配色与画布 | 想加新插件 / 改后端的人 |
+| 一 · 共同底座 | 十个插件一览、分层、`Shape` 契约、GP v3 数据映射、参数分档、配色与画布 | 想加新插件 / 改后端的人 |
 | 二 · 各插件算法 | 每个插件一节：它在算什么、关键取舍、实测数据 | 想懂某个图案怎么来的的人 |
 | 三 · 交织专题 | 「谁压谁」的完整推导：边网平面化、配对、奇偶求解、切口公式、端头补片、蕾丝边 | 要改编织 / 移植交织的人 |
 | 四 · 工程与性能 | 向量化、弧长二分、带宽上限、实测表、局限、调试清单、常量速查 | 调性能 / 查 bug 的人 |
@@ -26,7 +26,7 @@
 
 # 第一部分 · 共同底座
 
-## 1. 九个插件一览
+## 1. 十个插件一览
 
 | 插件 | 在算什么 | 输出形态 | 核心算法 | 典型耗时 |
 |---|---|---|---|---|
@@ -35,6 +35,7 @@
 | `gen_girih` | 十种阿基米德镶嵌上的星形纹样 | GP 两至四层（填充 / 描边 / 带 / 砖轮廓） | Hankin 射线 → 股线 → 交织 | 33 ms（默认） |
 | `gen_interlace` | 正弦辫子 | GP 单层 | 折线求交 → 奇偶上下 → 切口补片 | 11 ms（7 股） |
 | `gen_voronoi` | Voronoi 单元 | GP 单层 | 种子点 → 平面 Voronoi | 3 ms（49 格） |
+| `gen_lsystem` | L-system 重写 + turtle 解释 | GP 单层（每分支一笔，**逐点半径**） | 模块重写 → 折线路径 | 2–28 ms（看迭代数） |
 | `gen_torus_knot` | 环面 (p, q) 结 | GP 闭合笔划（+ 几何节点扫管） | 闭式参数曲线 | 3 ms |
 | `gen_tsubayaki` | 弦线族星图 | GP 逐帧 | 内 / 外轨弦 + 方形裁边 | 亚毫秒 / 帧 |
 | `gen_dome` | 斐波那契穹顶 | 网格 + 几何节点 | 球面 Voronoi，多代烘焙 | 一次性烘焙 |
@@ -76,13 +77,13 @@ gen_girih/
 
 各插件的算法文件名不同，但职责划分一致：
 
-| 职责 | zellij | rosette | girih | interlace | voronoi | torus_knot | tsubayaki | dome | celtic |
-|---|---|---|---|---|---|---|---|---|---|
-| 造图形 | `scene.py` | `rosette.py` | `girih.py` | `strands.py` | `voronoi.py` + `seeds.py` | `knot.py` | `pattern.py` | `dome.py` + `mesh.py` | `knot.py` |
-| 编织 | `weave.py` | `weave.py` | `interlace.py` | `interlace.py` | — | — | — | — | `weave.py`（曲线扭升） |
-| 装配 | `scene.py` | `scene.py` | `scene.py` | `build.py` | `build.py` | `builder.py` | `scene.py` | `gn.py`（节点组） | `tube.py` |
-| 后端 | `gp.py` | `gp.py` | `gp.py` | `gp.py` | `gp.py` | `gp.py` / `tube.py` | `gp.py` | 网格 + 几何节点 | 曲线 + 几何节点 |
-| 实时 | — | — | 防抖重建 | `live.py` | `live.py` | `live.py` | `anim.py`（闭式） | — | `live.py` |
+| 职责 | zellij | rosette | girih | interlace | voronoi | lsystem | torus_knot | tsubayaki | dome | celtic |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 造图形 | `scene.py` | `rosette.py` | `girih.py` | `strands.py` | `voronoi.py` + `seeds.py` | `lsystem.py` + `turtle.py` | `knot.py` | `pattern.py` | `dome.py` + `mesh.py` | `knot.py` |
+| 编织 | `weave.py` | `weave.py` | `interlace.py` | `interlace.py` | — | — | — | — | — | `weave.py`（曲线扭升） |
+| 装配 | `scene.py` | `scene.py` | `scene.py` | `build.py` | `build.py` | `builder.py` | `builder.py` | `scene.py` | `gn.py`（节点组） | `tube.py` |
+| 后端 | `gp.py` | `gp.py` | `gp.py` | `gp.py` | `gp.py` | `gp.py` | `gp.py` / `tube.py` | `gp.py` | 网格 + 几何节点 | 曲线 + 几何节点 |
+| 实时 | — | — | 防抖重建 | `live.py` | `live.py` | `live.py` | `live.py` | `anim.py`（闭式） | — | `live.py` |
 
 > **同步义务**：`gen_rosette/weave.py` 是 `gen_zellij/weave.py` 的副本（只把 `_edge_network`
 > 公开成 `edge_network`）。修编织 bug 必须两边一起改。`gen_interlace/interlace.py` 是独立实现，
@@ -187,6 +188,7 @@ Celtic:   （曲线对象，没有 GP 图层）
 | `gen_rosette` | 种子（只影响配色）、花瓣数、花型、阶数、画布、边距、带宽、描边倍数、间隙、平头交叉 | 四层显隐、辅助线宽 |
 | `gen_girih` | 镶嵌、接触角、间隙、边长、画布、样式、缝隙、填充开关、砖轮廓 | 线宽、描边倍数（非交织样式）、两个颜色、不透明度、图层显隐、画布底色 |
 | `gen_interlace` | 上下规则、带宽、采样步长、浅角钳制、平贴端头、缝宽、间隙、端帽 | 线色、不透明度 |
+| `gen_lsystem` | 公理、规则、迭代、种子、转角、步长、基础线宽、变细 / 变粗倍率、向重力、维度 | 宽度倍数（从 `base_radius` 重算）、线色、渐变档（按粗细 / 按深度 / 按进度）、末色、不透明度 |
 | `gen_celtic` | 抬升（× 平均边长） | 管半径、圆周分段、采样密度（全是几何节点参数）、绳色 |
 | `gen_dome` | 终点种子数、半径、缝宽、封底 | 生长进度 / 起始帧 / 时长、立柱、两个颜色 |
 
@@ -781,6 +783,8 @@ for handler in bpy.app.handlers.depsgraph_update_post:
 | `gen_zellij` density 20（含编织） | — | — | — | 476 ms |
 | `gen_interlace` 7 股 | 920 点 | — | — | 11 ms |
 | `gen_interlace` 30 股 | 10,903 点 | — | — | 185 ms |
+| `gen_lsystem` 龙形曲线（迭代 12） | 1 笔 / 4097 点 | 11.5 ms | — | **28 ms** |
+| `gen_lsystem` 分形植物（迭代 5） | 512 笔 / 2000 点 | 5.1 ms | — | **11 ms** |
 | `gen_torus_knot` | 1 笔划 | — | — | 3 ms |
 | `gen_voronoi` 49 格 | 49 笔划 | — | — | 3 ms |
 | `gen_tsubayaki` 单帧 | — | — | — | < 1 ms |
