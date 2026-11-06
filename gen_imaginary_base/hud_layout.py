@@ -588,11 +588,14 @@ def build(state) -> dict:
     # 页脚
     footer_x = grid_x + 6.0
     footer_y = origin_y + HINT_HEIGHT
+    # 基线与字号照 fractal_family 抄：数字 11.5 / label 10.5 / 按钮文字 10.5，
+    # 基线差控制在 0.4 px 内 —— 之前写成 +7 与 +5.0、按钮文字 9.5，
+    # 数字 optically 浮高了好几个像素，整行看起来是歪的。
     primitives.append(
-        _text(footer_x, footer_y + 7, label(state, "places"), 10.5, theme["text"])
+        _text(footer_x, footer_y + 6, label(state, "places"), 10.5, theme["text"])
     )
     primitives.append(
-        _text(footer_x + 66, footer_y + 7, str(places), 11.5, theme["text"], "CENTER")
+        _text(footer_x + 66, footer_y + 6, str(places), 11.5, theme["text"], "CENTER")
     )
     _small_button(
         primitives,
@@ -681,7 +684,7 @@ def build(state) -> dict:
 
 
 def _small_button(primitives, hotspots, x, y, w, text, ident, hover, theme):
-    height = 18.0
+    height = FOOTER_HEIGHT - 4  # 照 fractal_family：22 高，文字 10.5、基线 y+5.6
     active = hover == ident
     primitives.append(
         _rect(
@@ -689,7 +692,7 @@ def _small_button(primitives, hotspots, x, y, w, text, ident, hover, theme):
         )
     )
     primitives.append(
-        _text(x + w / 2.0, y + 5.0, text, 9.5, theme["button_text"], "CENTER")
+        _text(x + w / 2.0, y + 5.6, text, 10.5, theme["button_text"], "CENTER")
     )
     hotspots.append(_rect_hotspot(x, y, w, height, ident, "button"))
 
