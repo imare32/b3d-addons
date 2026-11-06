@@ -3,13 +3,14 @@
 做法与 `fractal_family` 的 ``preview.py`` 一致：只有想让「改参数 → 立刻看到结果」成立时
 才需要它，而它一旦建临时对象，撤销栈和场景里就会多出一堆垃圾。
 
-按数字分组画
-    同号的点颜色相同，于是可以一组一次 ``draw``（每组一条 batch）。96 个数字就是 96 次
-    绘制调用 —— 比"逐点给色"省事得多，也不用自己写 shader。
+每个整数画成一整格
+    Gaussian 铺方格、Eisenstein 铺六边形 —— 和参考实现的画布一致。早先版本画的是
+    屏幕像素大小的 ``POINTS``，远远看过去只是一层灰；铺满格子之后形状才读得出来，
+    而且缩放视口时格子跟着几何走，不是固定像素大小。
 
-点大小
-    ``POINTS`` 图元的大小由 ``gpu.state.point_size_set`` 控制，是**屏幕像素**，所以缩放
-    视口时点不会跟着变大变小 —— 这正是点集想要的：拉近是看结构，不是看圆点。
+按数字分组画
+    同号的格子颜色相同，于是可以一组一次 ``draw``（每组一条 batch）。96 个数字就是
+    96 次绘制调用，比"逐点给色"省事，也不用自己写 shader。
 
 取景框
     Gaussian（``I``）画正方形，Eisenstein（``W``）画六边形 —— 与 HUD 和网页版一致。
@@ -18,6 +19,7 @@
 
 from __future__ import annotations
 
+import math
 import traceback
 
 import bpy
@@ -30,9 +32,6 @@ from .hud_layout import frame_polygon
 
 __all__ = ["install", "remove", "tag_redraw"]
 
-#: 点大小（像素）。太小看不清结构，太大一万点就糊成一片。
-POINT_SIZE = 3.4
-
 #: 取景框线宽（像素）与颜色。中性灰：深浅主题下都看得见。
 FRAME_WIDTH = 1.6
 FRAME_COLOUR = (0.42, 0.42, 0.45, 0.75)
@@ -41,12 +40,38 @@ _HANDLE = None
 _HANDLE_KEY = "imaginarybase_preview_handle"
 _HANDLE_REGION = "WINDOW"
 
-#: 画好的批次缓存：``key -> {"points": [...], "frame": batch}``
+#: 画好的批次缓存：``key -> {"cells": [...], "frame": batch}``
 _BATCHES: dict = {}
 _CACHE_LIMIT = 4
 
 #: 只打印一次绘制异常，免得每个重绘都刷屏。
 _REPORTED = False
+
+
+def cell_triangles(domain: str) -> np.ndarray:
+    """单位格拆成三角形，返回角点偏移表 ``(6, 2)`` 或 ``(18, 2)``。
+
+    格距是 1：方形取边长 0.94（2 个三角形 = 6 个角点），六边形取外接半径
+    ``0.94/√3``（6 个三角形 = 18 个角点）—— 都留一点点缝，相邻格之间才看得出界线。
+    六边形尖顶朝上（顶点在 90°），与三角格的朝向一致。
+    """
+    if domain != "W":
+        half = 0.47
+        corners = [(-half, -half), (half, -half), (half, half), (-half, half)]
+        triangles = [(0, 1, 2), (0, 2, 3)]
+    else:
+        radius = 0.94 / math.sqrt(3.0)
+        corners = [
+            (
+                radius * math.cos(math.pi / 6.0 + index * math.pi / 3.0),
+                radius * math.sin(math.pi / 6.0 + index * math.pi / 3.0),
+            )
+            for index in range(6)
+        ]
+        corners.append((0.0, 0.0))  # 6 号是中心，扇形三角都用它
+        triangles = [(6, index, (index + 1) % 6) for index in range(6)]
+    table = [corners[index] for triangle in triangles for index in triangle]
+    return np.array(table, dtype=np.float32)
 
 
 def _settings(context=None):
@@ -56,22 +81,25 @@ def _settings(context=None):
 
 
 def _build_batches(settings):
-    """按数字分组建 batch；同时给取景框建一条线。"""
+    """按数字分组，把每个整数铺成**一整格**（方格 / 六边形）。"""
     data = settings.point_data()
     xy = data["xy"]
     if len(xy) == 0:
         return []
-    positions = np.zeros((len(xy), 3), dtype=np.float32)
-    positions[:, :2] = xy
+    table = cell_triangles(settings.domain)
     shader = gpu.shader.from_builtin("UNIFORM_COLOR")
     batches = []
     for slot in np.unique(data["slot"]):
         mask = data["slot"] == slot
-        # 每个 slot 用自己那号线性色（与 GP 输出一致），预乘 alpha 交给混合状态
+        # (n, 18, 2)：每个点展开成 18 个角点，z 恒为 0（点集本来就在 XY 平面上）
+        cell = xy[mask][:, None, :] + table[None, :, :]
+        verts = np.zeros((cell.shape[0], cell.shape[1], 3), dtype=np.float32)
+        verts[:, :, :2] = cell
+        # 每个 slot 用自己那号线性色（与 GP 输出一致）
         colour = palette.digit_colour_linear(int(slot))
         batches.append(
             (
-                batch_for_shader(shader, "POINTS", {"pos": positions[mask]}),
+                batch_for_shader(shader, "TRIS", {"pos": verts.reshape(-1, 3)}),
                 (*colour, 1.0),
             )
         )
@@ -105,7 +133,7 @@ def _batches_for(settings):
     data = settings.point_data()
     shader = gpu.shader.from_builtin("UNIFORM_COLOR")
     built = {
-        "points": _build_batches(settings),
+        "cells": _build_batches(settings),
         "frame": _frame_batch(settings, data, shader),
     }
     if len(_BATCHES) >= _CACHE_LIMIT:
@@ -131,22 +159,21 @@ def _draw():
     gpu.state.blend_set("ALPHA")
     shader.bind()
     try:
+        # 先铺格子、后描框：框压在格子上面才看得见
+        for batch, colour in batches.get("cells") or ():
+            shader.uniform_float("color", colour)
+            batch.draw(shader)
         frame = batches.get("frame")
         if frame is not None:
             gpu.state.line_width_set(FRAME_WIDTH)
             shader.uniform_float("color", FRAME_COLOUR)
             frame.draw(shader)
-        gpu.state.point_size_set(POINT_SIZE)
-        for batch, colour in batches.get("points") or ():
-            shader.uniform_float("color", colour)
-            batch.draw(shader)
     except Exception:
         if not _REPORTED:
             _REPORTED = True
             print("[gen_imaginary_base] 视口预览绘制失败（后续不再重复报告）：")
             traceback.print_exc()
     finally:
-        gpu.state.point_size_set(1.0)
         gpu.state.line_width_set(1.0)
         gpu.state.blend_set("NONE")
 

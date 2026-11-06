@@ -31,6 +31,7 @@ __all__ = [
     "build",
     "frame_polygon",
     "hit",
+    "inside_panel",
     "lattice_basis",
     "lattice_to_screen",
     "panel_height",
@@ -147,6 +148,14 @@ def _inside_polygon(x, y, points) -> bool:
             if x < cross:
                 inside = not inside
     return inside
+
+
+def inside_panel(panel, x, y) -> bool:
+    """指针是否落在面板矩形里（``panel`` = ``(x, y, w, h)``，区域坐标，左下为原点）。"""
+    if not panel:
+        return False
+    px, py, pw, ph = panel
+    return px <= x <= px + pw and py <= y <= py + ph
 
 
 def _rect(x, y, w, h, colour, radius=0.0):

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import re
 
-from .ring import parse_qint
+from .ring import format_qint, parse_qint
 
 __all__ = [
     "MAX_DIGITS",
@@ -23,6 +23,7 @@ __all__ = [
     "PRESET_NAMES",
     "parse_preset",
     "preset_by_name",
+    "preset_label",
 ]
 
 #: 数字集上限。位数这一维已经被点数预算压住了，但「拖动数字」是 HUD 里一个个画的，
@@ -237,3 +238,23 @@ def preset_by_name(name: str):
     if not 0 <= index < len(PRESETS):
         return None
     return parse_preset(PRESETS[index][0])
+
+
+def preset_label(code: str) -> str:
+    """下拉里显示的一行名字：``2i · 4 digits`` / ``-1+i · 2 digits · by lead``。
+
+    原先直接把分享码截断塞进下拉（``base 2i with digits 0, 1, i, an…``），
+    每条都长得差不多、还都是半句话 —— 看不出底数是什么、有几个数字。
+    这里解析出来按「底数 · 数字个数 · 上色方式」重排，读起来就是一套数系的摘要。
+    解析不了（手改过的奇怪字符串）才退回原文。
+    """
+    data = parse_preset(code)
+    if data is None:
+        return code[:48]
+    base = format_qint(data["domain"], *data["base"])
+    label = f"{base} · {len(data['digits'])} digits"
+    if data["colour_mode"] == "LEAD":
+        return f"{label} · by lead"
+    if data["colour_mode"] == "PLACE":
+        return f"{label} · by {data['colour_place']}th"
+    return label

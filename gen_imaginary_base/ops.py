@@ -246,6 +246,15 @@ class IMAGINARYBASE_OT_hud(bpy.types.Operator):
     # --- 事件 -------------------------------------------------------------
 
     def modal(self, context, event):
+        """**不抢视口**的模态：只有指针落在面板上（或正在拖）时才吃事件。
+
+        照 `fractal_family` 的规则：早期版本把所有事件都吃掉，HUD 一开就没法摆视角、
+        选中物体、用别的面板，等于视口被锁住。现在：
+
+        * 指针在面板外：一律 ``PASS_THROUGH``，视口与快捷键照常；
+        * 指针在面板内：点击 / 滚轮 / 面板上写明的按键归 HUD；
+        * 正在拖标记：不管指针跑到哪都归 HUD —— 否则松手事件被别人吃掉，标记会卡住。
+        """
         session = hud.session()
         if session is None:
             self._finish(context)
@@ -258,68 +267,84 @@ class IMAGINARYBASE_OT_hud(bpy.types.Operator):
         layout = hud.layout_for(context) or {}
         hotspots = layout.get("hotspots") or []
         mouse = (event.mouse_region_x, event.mouse_region_y)
+        inside = hud_layout.inside_panel(layout.get("panel"), *mouse)
+        dragging = bool(session.get("drag"))
 
         if event.type == "MOUSEMOVE":
-            spot = hud_layout.hit(hotspots, *mouse)
-            ident = spot["id"] if spot else ""
-            if ident != session.get("hover"):
-                session["hover"] = ident
-                context.area.tag_redraw()
-            if session.get("drag"):
-                self._drag(settings, session, layout, mouse)
+            self._hover(context, session, hotspots, mouse)
+            if not dragging:
+                return {"PASS_THROUGH"}
+            self._drag(settings, session, layout, mouse)
             return {"RUNNING_MODAL"}
 
         if event.type in {"WHEELUPMOUSE", "WHEELDOWNMOUSE"}:
+            if not inside:
+                return {"PASS_THROUGH"}
             if event.shift:
                 self._zoom(
                     session, layout, 1.12 if event.type == "WHEELUPMOUSE" else 1 / 1.12
                 )
             else:
-                delta = 1 if event.type == "WHEELUPMOUSE" else -1
-                bpy.ops.imaginarybase.place_step(delta=delta)
+                bpy.ops.imaginarybase.place_step(
+                    delta=1 if event.type == "WHEELUPMOUSE" else -1
+                )
             context.area.tag_redraw()
             return {"RUNNING_MODAL"}
 
-        if event.type == "LEFTMOUSE" and event.value == "PRESS":
-            spot = hud_layout.hit(hotspots, *mouse)
-            if spot is None:
+        if event.type == "LEFTMOUSE":
+            if event.value == "PRESS":
+                spot = hud_layout.hit(hotspots, *mouse)
+                if spot is None:
+                    # 面板是实心的：点面板空白处不该穿透去选中它后面的物体
+                    return {"RUNNING_MODAL"} if inside else {"PASS_THROUGH"}
+                if spot["kind"] in {"digit", "base"}:
+                    session["drag"] = spot["id"]
+                    context.window.cursor_set("SCROLL_XY")
+                    context.area.tag_redraw()
+                    return {"RUNNING_MODAL"}
+                self._press(context, settings, spot)
                 return {"RUNNING_MODAL"}
-            if spot["kind"] in {"digit", "base"}:
-                session["drag"] = spot["id"]
-                context.window.cursor_set("SCROLL_XY")
-                context.area.tag_redraw()
-                return {"RUNNING_MODAL"}
-            self._press(context, settings, spot)
+            if not dragging:
+                return {"PASS_THROUGH"}
+            session["drag"] = ""
+            context.window.cursor_set("CROSSHAIR")
+            context.area.tag_redraw()
             return {"RUNNING_MODAL"}
 
-        if event.type == "LEFTMOUSE" and event.value == "RELEASE":
-            if session.get("drag"):
-                session["drag"] = ""
-                context.window.cursor_set("CROSSHAIR")
-                context.area.tag_redraw()
-            return {"RUNNING_MODAL"}
-
-        if event.type in {"RIGHTMOUSE", "ESC"}:
+        if event.type in {"RIGHTMOUSE", "ESC"} and event.value == "PRESS":
+            if not inside and not dragging:
+                return {"PASS_THROUGH"}
             self._finish(context)
             return {"CANCELLED"}
 
-        if event.value == "PRESS":
-            if event.type == "F":
-                # F = 只框数字（改数字），Shift+F = 连点集一起框（看形状）
-                hud.reset_view("all" if event.shift else "digits")
-            elif event.type == "TAB":
-                settings.domain = "W" if settings.domain == "I" else "I"
-            elif event.type == "A":
-                bpy.ops.imaginarybase.digit_add()
-            elif event.type == "X":
-                bpy.ops.imaginarybase.digit_remove()
-            elif event.type in {"Q"}:
-                self._finish(context)
-                return {"CANCELLED"}
-            context.area.tag_redraw()
-            return {"RUNNING_MODAL"}
+        if event.value != "PRESS":
+            return {"PASS_THROUGH"}
 
+        # 键盘：只有指针停在面板上才接管，否则让视口快捷键照常工作
+        if not inside and not dragging:
+            return {"PASS_THROUGH"}
+
+        if event.type == "F":
+            # F = 只框数字（改数字），Shift+F = 连点集一起框（看形状）
+            hud.reset_view("all" if event.shift else "digits")
+        elif event.type == "TAB":
+            settings.domain = "W" if settings.domain == "I" else "I"
+        elif event.type == "A":
+            bpy.ops.imaginarybase.digit_add()
+        elif event.type == "X":
+            bpy.ops.imaginarybase.digit_remove()
+        elif event.type == "Q":
+            self._finish(context)
+            return {"CANCELLED"}
+        context.area.tag_redraw()
         return {"RUNNING_MODAL"}
+
+    def _hover(self, context, session, hotspots, mouse) -> None:
+        spot = hud_layout.hit(hotspots, *mouse)
+        ident = spot["id"] if spot else ""
+        if ident != session.get("hover"):
+            session["hover"] = ident
+            context.area.tag_redraw()
 
     # --- 动作 -------------------------------------------------------------
 

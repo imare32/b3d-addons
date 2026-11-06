@@ -68,17 +68,25 @@ class IMAGINARYBASE_PT_panel(bpy.types.Panel):
     # --- HUD --------------------------------------------------------------
 
     def _hud(self, layout, settings):
-        row = layout.row()
-        row.scale_y = 1.55
-        row.operator(
+        box = _box(layout, t("Editing"), "GREASEPENCIL")
+        # 两个视口开关并排、等宽、放在最上面 —— 预览开关原先是埋在「输出」里的一个
+        # 复选项，很难找。``split(factor=0.5)`` 才是真正的等宽：普通 row 会按文字长度
+        # 分配，两个按钮看起来宽窄不一。
+        split = box.split(factor=0.5, align=True)
+        split.scale_y = 1.4
+        split.operator(
             "imaginarybase.hud",
-            text=t("Open HUD"),
-            icon="WINDOW",
+            text=t("HUD"),
+            icon="WORKSPACE",
             depress=hud.active(),
         )
-        hint = layout.column(align=True)
-        hint.scale_y = 0.85
-        hint.label(text=t("Drag a digit on the lattice · wheel = places · Tab = field"))
+        split.prop(
+            settings, "show_preview", text=t("Preview"), toggle=True, icon="HIDE_OFF"
+        )
+        box.label(
+            text=t("Drag a digit on the lattice · wheel = places · Tab = field"),
+            icon="INFO",
+        )
 
     # --- 数系 -------------------------------------------------------------
 
@@ -164,7 +172,6 @@ class IMAGINARYBASE_PT_panel(bpy.types.Panel):
         box.operator("imaginarybase.fit", text=t("Frame in Viewport"), icon="VIEWZOOM")
 
         col = box.column(align=True)
-        col.prop(settings, "show_preview", text=t("Viewport Preview"), toggle=True)
         col.prop(settings, "point_budget", text=t("Point Budget"))
         col.prop(settings, "dot_radius", text=t("Dot Radius"), slider=True)
 

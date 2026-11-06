@@ -115,7 +115,7 @@ class DigitItem(bpy.types.PropertyGroup):
 def _preset_items(self, context):
     items = [("CUSTOM", "Custom", "Use the base and digits edited here", "NONE", 0)]
     for index, (code, credit) in enumerate(_presets.PRESETS):
-        label = f"{index + 1:02d} · {code[:52]}{'…' if len(code) > 52 else ''}"
+        label = f"{index + 1:02d} · {_presets.preset_label(code)}"
         description = code + (f"\n\ncredit: {credit}" if credit else "")
         items.append((f"{index:02d}", label, description, "PRESET", index + 1))
     return items
