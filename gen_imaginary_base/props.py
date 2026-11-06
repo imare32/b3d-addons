@@ -408,7 +408,9 @@ def register():
 
 
 def unregister():
-    del bpy.types.Scene.imaginarybase
+    # 幂等：重载插件或开发时手动 unregister 之后再被注销一次，不该炸
+    if hasattr(bpy.types.Scene, "imaginarybase"):
+        del bpy.types.Scene.imaginarybase
 
 
 def bootstrap_default() -> None:

@@ -29,6 +29,7 @@ __all__ = [
     "THEME",
     "auto_zoom",
     "build",
+    "frame_polygon",
     "hit",
     "lattice_basis",
     "lattice_to_screen",
@@ -93,6 +94,7 @@ THEME = {
     "text": _INK + (1.0,),
     "text_dim": mix(_SILK, _INK, 0.62),
     "grid_bg": GRID_BG,
+    "frame": mix(GRID_BG, _INK, 0.55),
     "grid_dot": mix(GRID_BG, _MOSS, 0.28),
     "axis": mix(GRID_BG, _MOSS, 0.70),
     "point": _AZURITE + (1.0,),
@@ -131,6 +133,20 @@ def panel_height() -> float:
 # ---------------------------------------------------------------------------
 # 图元
 # ---------------------------------------------------------------------------
+
+
+def _inside_polygon(x, y, points) -> bool:
+    """射线法判断点是否在多边形内（凸凹都行，顶点顺序不限）。"""
+    inside = False
+    count = len(points)
+    for index in range(count):
+        x1, y1 = points[index]
+        x2, y2 = points[(index + 1) % count]
+        if (y1 > y) != (y2 > y):
+            cross = x1 + (y - y1) * (x2 - x1) / (y2 - y1)
+            if x < cross:
+                inside = not inside
+    return inside
 
 
 def _rect(x, y, w, h, colour, radius=0.0):
@@ -249,6 +265,38 @@ def lattice_basis(domain: str):
     if domain == "W":
         return (1.0, 0.0), (-0.5, math.sqrt(3.0) / 2.0)
     return (1.0, 0.0), (0.0, 1.0)
+
+
+def frame_polygon(domain: str, half_w: float, half_h: float, fit: str = "inside"):
+    """取景框的多边形（平面坐标，单位与格点相同），绕原点闭合。
+
+    Gaussian（``I``）给正方形 —— 整数格本身就是方格；Eisenstein（``W``）给六边形 ——
+    三角格的天然外框就是六边形（Voronoi 胞腔），参考实现的画布也是这个形状。
+    六边形取**尖顶、左右竖直边**：三角格的三条格线方向是 0° / 60° / 120°，胞腔的边
+    正对这三条方向，于是顶点落在 90° / 150° / … 上。
+
+    :param fit: ``"inside"`` = 六边形内切于给定矩形（HUD 用，不能画出面板）；
+        ``"contains"`` = 六边形包住给定矩形（3D 预览用，不能把点漏在框外）。
+    """
+    if domain != "W":
+        return [
+            (-half_w, -half_h),
+            (half_w, -half_h),
+            (half_w, half_h),
+            (-half_w, half_h),
+        ]
+    # 尖顶六边形：高 2r、宽 √3·r。要内切就取两者都装得下的 r，要包住就取装得下整框的 r。
+    limit = half_w / 0.8660254037844386
+    radius = max(half_h, limit) if fit == "contains" else min(half_h, limit)
+    x = radius * 0.8660254037844386
+    return [
+        (0.0, -radius),
+        (x, -radius / 2.0),
+        (x, radius / 2.0),
+        (0.0, radius),
+        (-x, radius / 2.0),
+        (-x, -radius / 2.0),
+    ]
 
 
 def lattice_to_screen(domain, a, b, origin_x, origin_y, zoom):
@@ -395,7 +443,6 @@ def build(state) -> dict:
     grid_y = origin_y + FOOTER_HEIGHT + HINT_HEIGHT + GAP
     grid_w = grid_h = GRID_SIZE
     grid_rect = (grid_x, grid_y, grid_w, grid_h)
-    primitives.append(_rect(grid_x, grid_y, grid_w, grid_h, theme["grid_bg"], 4.0))
 
     # 取景：把数字 / 底数标记与点集一起算进去
     content = [(float(a), float(b)) for a, b in digits] + [
@@ -436,16 +483,27 @@ def build(state) -> dict:
     def plane_to_screen(x, y):
         return lattice_origin[0] + x * zoom, lattice_origin[1] + y * zoom
 
+    # 取景框：Gaussian 是方形、Eisenstein 是六边形（六边形就是三角格的胞腔形状）。
+    # 先铺底色再描边；点阵与点集随后画在上面，并且按这个多边形裁剪 —— 否则六边形
+    # 外面的四个角会漏出点来。
+    half_w = (grid_w / 2.0) / zoom
+    half_h = (grid_h / 2.0) / zoom
+    centre_x = (grid_x + grid_w / 2.0 - lattice_origin[0]) / zoom
+    centre_y = (grid_y + grid_h / 2.0 - lattice_origin[1]) / zoom
+    frame = [
+        plane_to_screen(centre_x + px, centre_y + py)
+        for px, py in frame_polygon(domain, half_w, half_h)
+    ]
+    primitives.append(_poly(frame, theme["grid_bg"]))
+    primitives.append(_line(frame + [frame[0]], 1.4, theme["frame"]))
+
     # 点阵：整数格点只画点，不画线 —— 这个插件的地图是"格子上的点"，线反而糊
     reach_a = int(grid_w / zoom) + 2
     reach_b = int(grid_h / zoom) + 2
     for a in range(-reach_a, reach_a + 1):
         for b in range(-reach_b, reach_b + 1):
             x, y = to_screen(a, b)
-            if (
-                grid_x + 2 <= x <= grid_x + grid_w - 2
-                and grid_y + 2 <= y <= grid_y + grid_h - 2
-            ):
+            if _inside_polygon(x, y, frame):
                 axis = a == 0 and b == 0
                 primitives.append(
                     _circle(
@@ -462,10 +520,7 @@ def build(state) -> dict:
     tint_cache: dict[int, tuple] = {}
     for point in points:
         sx, sy = plane_to_screen(point[0], point[1])
-        if not (
-            grid_x + 1 <= sx <= grid_x + grid_w - 1
-            and grid_y + 1 <= sy <= grid_y + grid_h - 1
-        ):
+        if not _inside_polygon(sx, sy, frame):
             continue
         slot = int(point[2]) if len(point) > 2 else 0
         colour = tint_cache.get(slot)

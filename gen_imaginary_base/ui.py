@@ -58,43 +58,68 @@ class IMAGINARYBASE_PT_panel(bpy.types.Panel):
             layout.label(text=t("Settings not available"), icon="ERROR")
             return
 
+        self._hud(layout, settings)
         self._system(layout, settings)
+        self._digits(layout, settings)
         self._places(layout, settings)
-        self._output(layout, settings, context)
+        self._output(layout, settings)
         self._status(layout, settings)
+
+    # --- HUD --------------------------------------------------------------
+
+    def _hud(self, layout, settings):
+        row = layout.row()
+        row.scale_y = 1.55
+        row.operator(
+            "imaginarybase.hud",
+            text=t("Open HUD"),
+            icon="WINDOW",
+            depress=hud.active(),
+        )
+        hint = layout.column(align=True)
+        hint.scale_y = 0.85
+        hint.label(text=t("Drag a digit on the lattice · wheel = places · Tab = field"))
 
     # --- 数系 -------------------------------------------------------------
 
     def _system(self, layout, settings):
         box = _box(layout, t("Numeral System"), "PRESET")
         box.prop(settings, "preset", text="")
-        box.prop(settings, "domain", text="")
+
+        # 域做成两个并排按钮：切换 i / ω 是常用动作，藏在下拉里要多点一次
+        box.row(align=True).prop(settings, "domain", expand=True)
 
         row = box.row(align=True)
         row.prop(settings, "base_a", text=t("Base Real"))
         row.prop(settings, "base_b", text=t("Base Imaginary"))
-        base = ring.format_qint(settings.domain, settings.base_a, settings.base_b)
-        box.label(
+
+        column = box.column(align=True)
+        column.label(
             text=tfmt(
                 "base {base} · scaling √{scale}",
-                base=base,
-                scale=round(
-                    float(
-                        ring.QInt(
-                            settings.base_a, settings.base_b, settings.domain
-                        ).norm
-                    )
-                    ** 0.5,
-                    2,
+                base=ring.format_qint(
+                    settings.domain, settings.base_a, settings.base_b
                 ),
+                scale=round(float(settings.base().norm) ** 0.5, 2),
             ),
             icon="DRIVER",
         )
+        # 有效性紧挨着底数显示 —— 这是本插件比参考实现多出来的那一条判定，
+        # 放在面板最底部就看不见了。
+        check = settings.canonical()
+        if check["ok"]:
+            column.label(text=t("Every integer has one expansion"), icon="CHECKMARK")
+        elif check["reason"]:
+            column.label(text=check["reason"], icon="ERROR")
 
+    # --- 数字集 -----------------------------------------------------------
+
+    def _digits(self, layout, settings):
+        box = _box(layout, tfmt("Digits ({count})", count=len(settings.digits)), "DOT")
         head = box.row(align=True)
-        head.label(text=tfmt("Digits ({count})", count=len(settings.digits)))
-        head.operator("imaginarybase.digit_add", text="", icon="ADD")
-        head.operator("imaginarybase.digit_remove", text="", icon="REMOVE")
+        head.operator("imaginarybase.digit_add", text=t("Add"), icon="ADD")
+        head.operator("imaginarybase.digit_remove", text=t("Remove"), icon="REMOVE")
+        head.operator("imaginarybase.reset_digits", text="", icon="LOOP_BACK")
 
         box.template_list(
             "IMAGINARYBASE_UL_digits",
@@ -103,18 +128,15 @@ class IMAGINARYBASE_PT_panel(bpy.types.Panel):
             "digits",
             settings,
             "active_digit",
-            rows=min(6, max(2, len(settings.digits))),
+            rows=min(7, max(3, len(settings.digits))),
         )
-        index = min(settings.active_digit, max(0, len(settings.digits) - 1))
         if len(settings.digits):
+            index = min(settings.active_digit, max(0, len(settings.digits) - 1))
             item = settings.digits[index]
             row = box.row(align=True)
             row.enabled = index != 0  # 0 号恒为零，不可改
             row.prop(item, "a", text=t("A"))
             row.prop(item, "b", text=t("B"))
-        box.operator(
-            "imaginarybase.reset_digits", text=t("Reset to 2i Digits"), icon="LOOP_BACK"
-        )
 
     # --- 位数与上色 -------------------------------------------------------
 
@@ -131,39 +153,32 @@ class IMAGINARYBASE_PT_panel(bpy.types.Panel):
 
     # --- 输出 -------------------------------------------------------------
 
-    def _output(self, layout, settings, context):
+    def _output(self, layout, settings):
         box = _box(layout, t("Output"), "GREASEPENCIL")
-        col = box.column(align=True)
-        col.prop(settings, "point_budget", text=t("Point Budget"))
-        col.prop(settings, "dot_radius", text=t("Dot Radius"), slider=True)
 
         row = box.row(align=True)
-        row.scale_y = 1.4
+        row.scale_y = 1.35
         row.operator("imaginarybase.generate", text=t("Generate"), icon="PLAY")
         row.operator("imaginarybase.remove", text="", icon="TRASH")
 
-        row = box.row(align=True)
-        row.operator("imaginarybase.fit", text=t("Frame in Viewport"), icon="VIEWZOOM")
-        row.operator(
-            "imaginarybase.hud", text=t("HUD"), icon="WINDOW", depress=hud.active()
-        )
-        box.prop(settings, "show_preview", text=t("Viewport Preview"))
+        box.operator("imaginarybase.fit", text=t("Frame in Viewport"), icon="VIEWZOOM")
+
+        col = box.column(align=True)
+        col.prop(settings, "show_preview", text=t("Viewport Preview"), toggle=True)
+        col.prop(settings, "point_budget", text=t("Point Budget"))
+        col.prop(settings, "dot_radius", text=t("Dot Radius"), slider=True)
 
     # --- 状态 -------------------------------------------------------------
 
     def _status(self, layout, settings):
         box = layout.box()
-        check = settings.canonical()
-        if check["ok"]:
-            box.label(text=t("Canonical numeral system"), icon="CHECKMARK")
-        elif check["reason"]:
-            box.label(text=check["reason"], icon="INFO")
         data = settings.point_data()
-        box.label(
+        row = box.row()
+        row.label(
             text=tfmt(
-                "places {places} · {count} points",
-                places=data["places"],
+                "{count} points · {places} places",
                 count=data["count"],
+                places=data["places"],
             ),
             icon="INFO",
         )
