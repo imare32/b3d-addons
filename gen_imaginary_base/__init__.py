@@ -53,6 +53,7 @@ translation_dict = {
         ("*", "Digits ({count})"): "数字（{count}）",
         ("*", "Reset to 2i Digits"): "重置为 2i 数字",
         ("*", "Places"): "位数",
+        ("*", "Places (max {max})"): "位数（最多 {max}）",
         ("*", "Colour By"): "上色依据",
         ("*", "Place"): "位号",
         ("*", "Point Budget"): "点数预算",

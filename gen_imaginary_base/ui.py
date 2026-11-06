@@ -150,10 +150,14 @@ class IMAGINARYBASE_PT_panel(bpy.types.Panel):
 
     def _places(self, layout, settings):
         box = _box(layout, t("Places & Colour"), "COLOR")
+        # 上限跟着「数字个数 × 点数预算」变，直接写进标签的括号里，滑杆占满整行。
+        # 右边不再挂单独的 "max N" 标签 —— 那会把滑杆挤成半行。
         ceiling = ring.max_places(max(2, len(settings.digits)), settings.point_budget)
-        row = box.row(align=True)
-        row.prop(settings, "places", text=t("Places"), slider=True)
-        row.label(text=tfmt("max {max}", max=ceiling))
+        box.prop(
+            settings,
+            "places",
+            text=tfmt("Places (max {max})", max=ceiling),
+        )
 
         box.prop(settings, "colour_mode", text=t("Colour By"))
         if settings.colour_mode == "PLACE":
