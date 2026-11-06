@@ -32,6 +32,9 @@ from .palette import PALETTE, hex_to_rgb
 __all__ = [
     "BADGE_SIZE",
     "FOOTER_HEIGHT",
+    "FRACTAL_MAX_LEVEL",
+    "FRACTAL_MAX_POINTS",
+    "FRACTAL_MIN_LEVEL",
     "GRID_SIZE",
     "HEADER_HEIGHT",
     "HINT_HEIGHT",
@@ -41,6 +44,8 @@ __all__ = [
     "THEME",
     "auto_zoom",
     "build",
+    "dash_segments",
+    "fractal_level",
     "hit",
     "lattice_basis",
     "lattice_to_screen",
@@ -79,9 +84,14 @@ GAP = 2.0
 #: 自动取景时每个格点最少 / 最多的像素数。
 MIN_ZOOM = 6.0
 MAX_ZOOM = 90.0
-#: HUD 网格里画的分形级数（可编辑的折线是第 1 级，这里是它再展开两级）。
-FRACTAL_LEVEL = 3
-#: 分形虚线超过这个点数就不画了（大基因的第 3 级会爆）。
+#: 分形虚线**最少**画到第几级。第 1 级就是那条可编辑的粗折线本身，再叠一条虚线没有意义，
+#: 所以等级调到 1 时虚线仍画第 2 级。
+FRACTAL_MIN_LEVEL = 2
+#: 虚线**最多**画到第几级 —— 与 3D 视口预览的上限（``props.PREVIEW_MAX_LEVEL``）一致，
+#: 否则等级调过 6 之后会出现"HUD 的虚线还在变、视口里却不动"的错位。真正的值由
+#: :mod:`hud` 放进 ``state["max_level"]``（这一层不 import bpy，只认传进来的数）。
+FRACTAL_MAX_LEVEL = 6
+#: 虚线的点数上限：超过就往低一级退（9 段基因第 4 级就 6561 点，会糊成一团）。
 FRACTAL_MAX_POINTS = 4000
 #: 虚线的实线段 / 空隙长度（像素）。
 DASH_ON = 5.0
@@ -260,8 +270,15 @@ def _clip_line(primitives, start, end, rect, width, colour):
     ))
 
 
-def _dash_polyline(primitives, points, rect, colour, width=1.0):
-    """把折线画成虚线（按像素长度切），并且按网格区裁剪。"""
+def _walk_dashes(points, on_dash=None, limit=None):
+    """按像素长度把折线切成虚线段，返回切出了多少段。
+
+    ``on_dash(start, end)`` 每段实线回调一次；传 ``None`` 就是**只数不画** ——
+    :func:`dash_segments` 拿它判断"这一级画不画得完"，画的时候 :func:`_dash_polyline`
+    拿它吐图元。两边共用同一套走法，估算和实际切分不会差出来。
+
+    :param limit: 数到这么多段就停（画的时候用它兜底，免得极端基因刷上千条图元）。
+    """
     drawing = True
     remain = DASH_ON
     count = 0
@@ -276,17 +293,36 @@ def _dash_polyline(primitives, points, rect, colour, width=1.0):
         while pos < length:
             step = min(remain, length - pos)
             if drawing:
-                start = (x0 + ux * pos, y0 + uy * pos)
-                end = (x0 + ux * (pos + step), y0 + uy * (pos + step))
-                _clip_line(primitives, start, end, rect, width, colour)
                 count += 1
-                if count >= DASH_MAX:
-                    return
+                if on_dash is not None:
+                    on_dash((x0 + ux * pos, y0 + uy * pos), (x0 + ux * (pos + step), y0 + uy * (pos + step)))
+                if limit is not None and count >= limit:
+                    return count
             pos += step
             remain -= step
             if remain <= 1e-6:
                 drawing = not drawing
                 remain = DASH_ON if drawing else DASH_OFF
+    return count
+
+
+def dash_segments(points) -> int:
+    """这条折线画成虚线会切成几段（**只数不画**）。
+
+    :data:`DASH_MAX` 是画的时候的硬上限，超了会**从这里往后整段丢掉** ——
+    表现就是"虚线末尾少了一截"。所以选等级时先用它量一遍，画不完整的就退到上一级
+    （见 :func:`build` 里选分形级别那段）。
+    """
+    return _walk_dashes(points)
+
+
+def _dash_polyline(primitives, points, rect, colour, width=1.0):
+    """把折线画成虚线（按像素长度切），并且按网格区裁剪。"""
+
+    def emit(start, end):
+        _clip_line(primitives, start, end, rect, width, colour)
+
+    _walk_dashes(points, emit, DASH_MAX)
 
 
 def _ring_hotspot(x, y, radius, ident, kind, payload=None):
@@ -350,17 +386,36 @@ def auto_zoom(domain, nodes, available_w, available_h):
     return max(MIN_ZOOM, min(MAX_ZOOM, zoom))
 
 
-# --- 分形虚线（第 3 级） -----------------------------------------------------
+# --- 分形虚线（跟随等级） -----------------------------------------------------
 
 #: 分形点列缓存：``key → [(x, y), ...]``（平面坐标，已补上原点）。
 _FRACTAL_CACHE: dict = {}
+
+
+def fractal_level(level: int, segments: int, max_level: int = FRACTAL_MAX_LEVEL) -> int:
+    """虚线该画第几级：**跟着当前等级走**，夹在 :data:`FRACTAL_MIN_LEVEL` ~ ``max_level``
+    之间，再按 :data:`FRACTAL_MAX_POINTS` 退到装得下的那级。
+
+    以前这里写死成第 3 级，于是底部写着「等级 4」、滚轮也在改等级，虚线却始终是 3 级 ——
+    看着像没生效。现在它和生成用的是同一个等级（点数预算装不下时自动退一级，
+    面板底部显示的数字仍是生成用的等级）。
+
+    ``max_level`` 传 3D 视口预览的上限（:data:`FRACTAL_MAX_LEVEL`），两边一起停在 6 级，
+    不会出现"HUD 虚线还在长、视口里不动"。
+    """
+    level = max(FRACTAL_MIN_LEVEL, min(int(level), int(max_level)))
+    segments = max(2, int(segments))
+    while level > FRACTAL_MIN_LEVEL and segments ** level + 1 > FRACTAL_MAX_POINTS:
+        level -= 1
+    return level
 
 
 def _fractal_path(elements, domain: str, level: int):
     """基因第 ``level`` 级的点列（**平面坐标**，不是整数格点）。
 
     和 :meth:`lattice.FractalGenerator.level_points` 是同一套算法，只是换成元组方便画；
-    带一层缓存，拖节点时每帧重算也不心疼（第 3 级通常几十到几百个点）。
+    带一层缓存，拖节点时每帧重算也不心疼（等级由 :func:`fractal_level` 夹过，
+    通常几十到几千个点）。
     """
     key = (domain, level, tuple(
         (int(element["a"]), int(element["b"]), bool(element["reverse"]), bool(element["mirror"]))
@@ -399,7 +454,8 @@ def build(state) -> dict:
     ==================  ==========================================================
     ``elements``        ``[{"a","b","reverse","mirror"}, ...]``
     ``domain``          ``"G"`` / ``"E"``
-    ``level``           预览等级
+    ``level``           预览等级（底部那个数字，也是生成用的等级）
+    ``max_level``       虚线最多画到第几级（= 3D 视口预览的上限）
     ``origin``          面板左下角在区域里的像素坐标（**左下有原点**，y 向上）
     ``zoom``            ``None`` = 按内容自动取景
     ``lattice_offset``  平面原点相对网格区左下角的偏移；``None`` = 按内容居中
@@ -475,15 +531,32 @@ def build(state) -> dict:
         running_b += int(element["b"])
         nodes.append((running_a, running_b))
 
-    # 第 3 级分形的点列（平面坐标；画成虚线，给"这个基因会长成什么"一个直观提示）
-    fractal = _fractal_path(elements, domain, FRACTAL_LEVEL) if elements else []
-
-    # 取景：能连虚线的分形一起装下最好；装不下（缩放掉太低）就只装基因本身
-    zoom = state.get("zoom")
-    if not zoom:
+    # 分形点列（平面坐标；画成虚线，给"这个基因会长成什么"一个直观提示）。
+    #
+    # 级别跟着底部那个「等级」走（见 fractal_level），滚轮一滚虚线就跟着变；但**必须画得完**：
+    # 点数超 :data:`FRACTAL_MAX_POINTS`、或者虚线切出来的段数超 :data:`DASH_MAX`
+    # （画的时候是硬截断，末尾会少一截 —— 等级 10 的龙形曲线就是这样），都退到上一级重来。
+    # 段数按**屏幕长度**算，所以得先有 zoom；自动取景时 zoom 又依赖分形本身，于是放在一个
+    # 小循环里：退一级 → 重新取景 → 再量一遍。
+    latched_zoom = state.get("zoom")
+    fractal = []
+    zoom = latched_zoom
+    if elements:
+        fractal_lvl = fractal_level(level, len(elements),
+                                    int(state.get("max_level") or FRACTAL_MAX_LEVEL))
+        while True:
+            fractal = _fractal_path(elements, domain, fractal_lvl)
+            zoom = latched_zoom or auto_zoom(domain, nodes, grid_w - 18.0, grid_h - 18.0)
+            if not latched_zoom and fractal:
+                zoom = _fit_with_fractal(domain, nodes, fractal, zoom, grid_w - 18.0, grid_h - 18.0)
+            if fractal_lvl <= FRACTAL_MIN_LEVEL:
+                break
+            # 只按 zoom 缩放、不平移：长度只看缩放，平移量不影响切分
+            if dash_segments([(x * zoom, y * zoom) for x, y in fractal]) <= DASH_MAX:
+                break
+            fractal_lvl -= 1
+    elif not zoom:
         zoom = auto_zoom(domain, nodes, grid_w - 18.0, grid_h - 18.0)
-        if fractal:
-            zoom = _fit_with_fractal(domain, nodes, fractal, zoom, grid_w - 18.0, grid_h - 18.0)
 
     # 平面原点的屏幕位置：会话里存**相对网格区的偏移**，面板搬走时格线跟着搬
     offset = state.get("lattice_offset")
@@ -527,7 +600,7 @@ def build(state) -> dict:
                 colour = theme["grid_axis"] if (a, b) == (0, 0) else theme["grid_dot"]
                 primitives.append(_circle(x, y, radius, colour))
 
-    # 第 3 级分形：细虚线（在可编辑折线下面，不抢主线）
+    # 分形：细虚线（在可编辑折线下面，不抢主线）
     if len(fractal) > 1:
         _dash_polyline(primitives, [plane_to_screen(x, y) for x, y in fractal],
                        grid_rect, theme["fractal"], 1.2)
@@ -598,7 +671,7 @@ def build(state) -> dict:
 
 
 def _fit_with_fractal(domain, nodes, fractal, gene_zoom, available_w, available_h):
-    """把第 3 级分形也算进取景范围；算出来太挤（比基因本身还小很多）就退回基因取景。"""
+    """把分形虚线也算进取景范围；算出来太挤（比基因本身还小很多）就退回基因取景。"""
     (ax, ay), (bx, by) = lattice_basis(domain)
     xs = [a * ax + b * bx for a, b in nodes] + [point[0] for point in fractal]
     ys = [a * ay + b * by for a, b in nodes] + [point[1] for point in fractal]

@@ -124,6 +124,7 @@ def preview_indices(mode: str, count: int):
 
 __all__ = [
     "install",
+    "line_vertices",
     "lines_for",
     "remove",
     "tag_redraw",
@@ -138,7 +139,8 @@ _HANDLE_KEY = "gen_fractal_family_preview_handle"
 _HANDLE_REGION = "WINDOW"
 
 #: 点列缓存（键 = :meth:`props.GenFractalFamilySettings.geometry_signature`）。
-_CACHE = {"key": None, "lines": []}
+#: ``closed`` 与 ``lines`` 一起缓存：它只由初始折线决定，重算点列时顺手带出来。
+_CACHE = {"key": None, "lines": [], "closed": False}
 
 #: 每次绘制重建的 batch 缓存（键同上；文件加载后 GPU 资源可能失效，出错就清空重来）。
 _BATCH = {"key": None, "items": []}
@@ -150,30 +152,36 @@ _BATCH = {"key": None, "items": []}
 
 
 def _initiator(settings):
-    """初始折线 ``(points, closed)``；没有指定曲线时返回 ``None``（= 直线）。"""
-    curve = settings.initiator_curve
-    if curve is None or not getattr(curve, "splines", None) or not curve.splines:
-        return None, False
-    spline = curve.splines[0]
-    points = []
-    if spline.type == "BEZIER" and len(spline.bezier_points) > 1:
-        points = [(p.co[0], p.co[1]) for p in spline.bezier_points]
-    elif len(spline.points) > 1:
-        points = [(p.co[0], p.co[1]) for p in spline.points]
-    if len(points) < 2:
-        return None, False
-    if settings.initiator_reverse:
-        points.reverse()
-    return np.asarray(points, dtype=float), bool(spline.use_cyclic_u)
+    """初始折线 ``(points, closed)``；直线时返回 ``(None, False)``。
+
+    来源（直线 / 正多边形 / 自定义曲线）由
+    :meth:`props.GenFractalFamilySettings.initiator` 决定，与生成共用同一份。
+    """
+    return settings.initiator()
 
 
-def lines_for(settings):
-    """当前参数对应的分级折线（``[np.ndarray (n, 2), ...]``，带缓存）。"""
+def line_vertices(line, closed: bool = False) -> np.ndarray:
+    """折线 → ``(n, 3)`` 顶点数组（``z = 0``；闭合时补上首点）。
+
+    闭合的初始折线（正多边形 / 闭合样条）在 :func:`lattice.teragon` 里**已经去掉**了那个
+    "回到起点"的重复点 —— 生成物靠 ``spline.use_cyclic_u`` 自己闭合，而预览用的是
+    ``LINE_STRIP``：不在这里补一段"末点 → 首点"，画出来就差最后一条边（生成的是闭合的，
+    预览却开着一个口子）。
+    """
+    vertices = np.column_stack([line[:, 0], line[:, 1], np.zeros(len(line))])
+    if closed and len(vertices) > 2:
+        vertices = np.vstack([vertices, vertices[:1]])
+    return vertices
+
+
+def _cached(settings):
+    """``(lines, closed)``：当前参数对应的分级折线与闭合标记（带缓存）。"""
     key = settings.geometry_signature()
     if _CACHE["key"] == key:
-        return _CACHE["lines"]
+        return _CACHE["lines"], _CACHE["closed"]
 
     lines = []
+    closed = False
     if settings.is_valid():
         generator = FractalGenerator(settings.elements())
         initiator, closed = _initiator(settings)
@@ -186,10 +194,17 @@ def lines_for(settings):
             lines = teragon(generator, level, initiator, closed)
         except (ValueError, ZeroDivisionError):
             lines = []
+            closed = False
     _CACHE["key"] = key
     _CACHE["lines"] = lines
+    _CACHE["closed"] = closed
     _BATCH["key"] = None
-    return lines
+    return lines, closed
+
+
+def lines_for(settings):
+    """当前参数对应的分级折线（``[np.ndarray (n, 2), ...]``，带缓存）。"""
+    return _cached(settings)[0]
 
 
 def _batches(settings):
@@ -198,7 +213,7 @@ def _batches(settings):
     画哪几级**跟着输出模式走**（见 :func:`preview_indices`）：输出「最后一级」时预览也只留
     骨架 + 最高级，免得视口里出现一批生成物里根本不存在的中间级。
     """
-    lines = lines_for(settings)
+    lines, closed = _cached(settings)
     if not lines:
         return []
     ramp = getattr(settings, "preview_ramp", "FAMILY")
@@ -234,7 +249,8 @@ def _batches(settings):
             srgb_to_linear(base[2]),
             alpha,
         )
-        vertices = np.column_stack([line[:, 0], line[:, 1], np.zeros(len(line))])
+        # 闭合的初始折线要补上"末点 → 首点"那一段，否则 LINE_STRIP 画出来是开口的
+        vertices = line_vertices(line, closed)
         batch = batch_for_shader(shader, "LINE_STRIP", {"pos": vertices.astype(np.float32)})
         items.append((batch, colour, float(widths[min(index, len(widths) - 1)]), shader))
     _BATCH["key"] = key

@@ -26,7 +26,7 @@ from .ops import (
     GFF_OT_setup_scene,
     GFF_OT_sync_from_object,
 )
-from .props import PREVIEW_MAX_LEVEL
+from .props import INITIATOR_SIDES, PREVIEW_MAX_LEVEL
 
 __all__ = ["GFF_PT_panel", "GFF_UL_items"]
 
@@ -38,9 +38,15 @@ LIST_IDNAME = "GFF_UL_items"
 
 
 def _box(layout, title: str, icon: str = "NONE"):
-    """一个盒子：首行是标题，后面照面板的排版写属性。"""
+    """一个盒子：首行是标题，后面照面板的排版写属性。
+
+    **关掉属性分栏**（``use_property_split``）：分栏会把左边约 40% 让给标签列，面板只有
+    300 px 宽时标签只用掉一小截、剩下全是空白，控件被挤到只剩半行（长一点的名字就截成
+    ``E(3, 0) Snowfl...``）。整个面板统一成「标签: 控件」的内联样式，标签紧贴左边缘、
+    控件紧跟在它后面，横向空间全给控件。
+    """
     box = layout.box()
-    box.use_property_split = True
+    box.use_property_split = False
     box.use_property_decorate = False
     box.label(text=title, icon=icon)
     return box
@@ -117,17 +123,44 @@ def _gene(layout, settings):
 
 def _shape(layout, settings):
     box = _box(layout, "等级与输出", "MOD_SUBSURF")
-    box.prop(settings, "level", slider=True)
+    # 等级用**普通数值控件**，不用 ``slider=True``：数值框两端带 ‹ › 步进箭头
+    # （**鼠标悬停时才画**，所以截图里看不到 —— 别当成没生效），点一下 ±1，正好是
+    # 等级这种整数步长；滑块（numslider）画出来是一条色带，压根没有箭头，只能拖。
+    box.prop(settings, "level")
     if settings.preview_truncated():
         box.label(text=f"视口预览只画到第 {PREVIEW_MAX_LEVEL} 级（输出仍按第 {settings.level} 级）",
                   icon="INFO")
-    box.prop(settings, "spline_type", text="样条")
-    box.prop(settings, "output_mode", text="输出")
-    box.prop(settings, "initiator_curve", text="初始曲线")
-    if settings.initiator_curve is not None:
-        box.prop(settings, "initiator_reverse", text="初始曲线反向")
+    # 样条 / 输出：**展开式**枚举（分段按钮）——只有两三个选项，展开比下拉少一次点击，
+    # 当前值也不用点开才看得见。注意**别传 ``text=""``**：传了空标签，每个按钮的文字会被
+    # 吞掉、只剩一片蓝色高亮（5.2 实测）；段数多于两个时也别放回分栏布局，否则会竖着堆。
+    for name in ("spline_type", "output_mode"):
+        row = box.row(align=True)
+        row.prop(settings, name, expand=True)
+    # 初始折线：**直线一行、正多边形一行**（现算，不用建曲线）。
+    # 多边形那行用短标签「3 边 / 4 边 / …」：五个选项平分一行只有 49 px，
+    # 「正三角形」这类四个字的显示名会被截成「正三…」；当前值照样高亮。
+    box.label(text="初始折线")
+    column = box.column(align=True)
+    column.enabled = not settings.initiator_custom
+    column.row(align=True).prop_enum(settings, "initiator_shape", "LINE", text="直线")
+    polygons = column.row(align=True)
+    for identifier, sides in INITIATOR_SIDES.items():
+        polygons.prop_enum(settings, "initiator_shape", identifier, text=f"{sides} 边")
+    # 自定义曲线是另一条路（用现成的曲线对象），单独一个勾选框；
+    # 勾上时上面那列变灰、不再生效，取消勾选就回到原来的形状
+    box.prop(settings, "initiator_custom")
+    if settings.initiator_custom:
+        box.prop(settings, "initiator_curve", text="曲线")
+        if settings.initiator_curve is None:
+            box.label(text="还没选曲线：当前等于直线", icon="ERROR")
+    elif settings.initiator_shape == "LINE":
+        box.label(text="直线 = 从原点到总向量", icon="INFO")
     else:
-        box.label(text="初始曲线留空 = 从原点到总向量的一条直线", icon="INFO")
+        # 这一行只写得下十来个字：边长规则放枚举的悬停说明里，别再往这里塞
+        sides = INITIATOR_SIDES.get(settings.initiator_shape, 0)
+        box.label(text=f"{sides} 边形 · 闭合", icon="MOD_SIMPLIFY")
+    if settings.initiator_custom or settings.initiator_shape != "LINE":
+        box.prop(settings, "initiator_reverse", text="反向")
 
 
 def _output(layout, settings, context):
@@ -163,8 +196,9 @@ def _preview(layout, settings):
     if settings.preview_ramp == "MONO":
         column.prop(settings, "preview_colour")
     if settings.show_preview:
-        box.label(text="朱砂粗线 = 第 1 级（生成器 / 骨架）", icon="INFO")
-    box.label(text="立即模式绘制：不创建任何临时对象", icon="CHECKMARK")
+        # 这两句都只有一行：面板内宽约 245 px，十来个汉字以上的句子会被截成"…"
+        box.label(text="朱砂粗线 = 第 1 级（骨架）", icon="INFO")
+    box.label(text="立即绘制，不建临时对象", icon="CHECKMARK")
 
 
 def _status(layout, settings):
@@ -179,7 +213,8 @@ def _status(layout, settings):
     # 只按公式估点数（不在这里真的展开点列：面板绘制不该做几何计算）
     if settings.is_valid():
         level = settings.preview_level()
-        count = estimate_points(settings.elements(), level)
+        # 初始折线可能是多边形 / 曲线（段数 > 1），点数按实际段数估
+        count = estimate_points(settings.elements(), level, settings.initiator_segments())
         # 预览关着的时候别说"预览第 N 级"，免得让人以为视口里应该有东西
         if settings.show_preview:
             box.label(text=f"预览第 {level} 级 ≈ {count:,} 点", icon="PRESET")
@@ -220,7 +255,8 @@ class GFF_PT_panel(bpy.types.Panel):
     def draw(self, context):
         settings = context.scene.gen_fractal_family
         layout = self.layout
-        layout.use_property_split = True
+        # 面板统一「标签: 控件」内联样式（标签左对齐、控件紧跟其后），见 :func:`_box`
+        layout.use_property_split = False
         layout.use_property_decorate = False
 
         _header(layout, settings)
@@ -233,6 +269,6 @@ class GFF_PT_panel(bpy.types.Panel):
 
         # 等级的行内提示：从面板上直接能看出"这一级有多重"
         if settings.is_valid() and settings.level > PREVIEW_MAX_LEVEL:
-            count = len(settings.items) ** int(settings.level)
+            count = len(settings.items) ** int(settings.level) * settings.initiator_segments()
             if count > 2_000_000:
                 layout.label(text=f"这一级约 {count:,} 点，生成会很慢", icon="ERROR")

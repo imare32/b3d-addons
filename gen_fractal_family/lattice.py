@@ -39,8 +39,10 @@ __all__ = [
     "moved_node",
     "nodes_of",
     "parse_gene",
+    "polygon_initiator",
     "snap_to_lattice",
     "teragon",
+    "total_vector",
 ]
 
 #: 三角点阵的 b 方向的高（√3 / 2）。
@@ -173,14 +175,21 @@ def format_gene(domain: str, elements) -> str:
     return " ".join(numbers)
 
 
+def total_vector(elements) -> ComplexInteger:
+    """基因的总向量（各段复整数之和）；空基因返回原点。"""
+    domain = elements[0][0].domain if elements else "G"
+    total = ComplexInteger(domain=domain)
+    for element, _flags in elements:
+        total = total + element
+    return total
+
+
 def gene_family(domain: str, elements) -> str:
     """家族名，形如 ``G(2, 1)``：域 + 总向量（基因各段的复整数和）。
 
     参考实现用它给预设分组，本插件也拿它当 HUD 标题。
     """
-    total = ComplexInteger(domain=domain)
-    for element, _flags in elements:
-        total = total + element
+    total = total_vector(elements)
     return f"{domain}({total.a}, {total.b})"
 
 
@@ -431,6 +440,37 @@ def estimate_points(elements, level: int, initiator_segments: int = 1) -> int:
 # ---------------------------------------------------------------------------
 # Teragon：把等级点列铺到初始折线上
 # ---------------------------------------------------------------------------
+
+
+def polygon_initiator(sides: int, integer: ComplexInteger, reverse: bool = False) -> np.ndarray:
+    """正 ``sides`` 边形的初始折线：**边长 = |总向量|**，第一条边从原点沿总向量方向。
+
+    Koch 雪花这类闭合分形需要一条首尾相接的初始折线。自己建曲线时既要凑正多边形、又要把
+    边长对齐到 ``|总向量|``（差一点就在接缝处错位），所以这里直接算出来。
+
+    边长必须是 ``|总向量|``：Teragon 的每一段替换都是把"单位线段 ``0 → 总向量``"铺到初始
+    折线的一段上，只有边长相等时接缝才严丝合缝。
+
+    **绕行方向取顺时针**（多边形的实体落在第一条边的右侧）：左弯的基因（Koch 曲线是典型）
+    于是朝**外**长，选个正三角形就是常见的雪花；要看朝里长的版本把 ``reverse`` 打开
+    （反向读点序，圆弧的凹凸跟着翻）。
+
+    :param sides: 边数（少于 3 按 3 算）。
+    :param integer: 基因的总向量（决定边长与第一条边的方向）。
+    :param reverse: 反向遍历顶点（形状不变，起点换到末顶点）。
+    """
+    sides = max(3, int(sides))
+    total = np.asarray(integer.coord, dtype=float)
+    side = float(np.hypot(total[0], total[1]))
+    heading = math.atan2(total[1], total[0])
+    step = -2.0 * math.pi / sides
+    points = np.zeros((sides, 2))
+    for index in range(1, sides):
+        angle = heading + (index - 1) * step
+        points[index] = points[index - 1] + side * np.array([math.cos(angle), math.sin(angle)])
+    if reverse:
+        points = points[::-1].copy()
+    return points
 
 
 def initiator_affines(initiator_points, integer: ComplexInteger, closed: bool = False) -> list[Affine2D]:

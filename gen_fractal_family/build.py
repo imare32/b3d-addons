@@ -24,7 +24,6 @@ from __future__ import annotations
 import time
 
 import bpy
-import numpy as np
 
 from . import curves
 from .lattice import FractalGenerator, teragon
@@ -78,21 +77,12 @@ def delete_generated() -> int:
 
 
 def initiator_points(settings):
-    """初始折线的点列 ``(numpy (n, 2), closed)``；没指定曲线时返回 ``(None, False)``。"""
-    curve = settings.initiator_curve
-    if curve is None or not getattr(curve, "splines", None) or not curve.splines:
-        return None, False
-    spline = curve.splines[0]
-    points = []
-    if spline.type == "BEZIER" and len(spline.bezier_points) > 1:
-        points = [(point.co[0], point.co[1]) for point in spline.bezier_points]
-    elif len(spline.points) > 1:
-        points = [(point.co[0], point.co[1]) for point in spline.points]
-    if len(points) < 2:
-        return None, False
-    if settings.initiator_reverse:
-        points.reverse()
-    return np.asarray(points, dtype=float), bool(spline.use_cyclic_u)
+    """初始折线 ``(numpy (n, 2), closed)``；直线时返回 ``(None, False)``。
+
+    真正的来源在 :meth:`props.GenFractalFamilySettings.initiator`（直线 / 正多边形 / 自定义
+    曲线），生成与预览共用它。
+    """
+    return settings.initiator()
 
 
 def _ensure_object(name: str, curve, collection=None):

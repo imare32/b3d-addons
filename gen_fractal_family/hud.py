@@ -31,7 +31,7 @@ import bpy
 import gpu
 from gpu_extras.batch import batch_for_shader
 
-from . import hud_layout, preview
+from . import hud_layout, preview, props
 
 __all__ = [
     "begin",
@@ -301,6 +301,8 @@ def layout_for(context=None) -> dict | None:
         "elements": elements,
         "domain": settings.domain,
         "level": int(settings.level),
+        # 虚线最多画到第几级：跟 3D 视口预览同一个上限，两边一起停在 6 级
+        "max_level": props.PREVIEW_MAX_LEVEL,
         "origin": tuple(hud.get("origin") or (DEFAULT_MARGIN, DEFAULT_MARGIN)),
         "zoom": hud.get("zoom"),
         "lattice_offset": hud.get("lattice_offset"),

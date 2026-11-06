@@ -5,7 +5,7 @@ HUD），写进去的都是同一份 ``items``。
 
 参数分两档：
 
-* **几何档**（域 / 基因 / 等级 / 初始曲线 / 形态）：动它就得重算点列。改动只会把
+* **几何档**（域 / 基因 / 等级 / 初始折线 / 形态）：动它就得重算点列。改动只会把
   ``dirty`` 标起来并排一次防抖 timer（见 :mod:`live`），不在 RNA 回调里直接写几何 ——
   拖滑块 / 撤销的当口写数据块等于从脚下抽走数据（``gen_celtic`` 踩过这个坑）；
 * **就地档**（预览配色 / 预览颜色 / 预览与 HUD 开关）：只影响 ``gpu`` 立即模式绘制的
@@ -16,6 +16,7 @@ HUD），写进去的都是同一份 ``items``。
 """
 
 import bpy
+import numpy as np
 
 from .lattice import (
     DOMAINS,
@@ -24,12 +25,15 @@ from .lattice import (
     format_gene,
     gene_family,
     parse_gene,
+    polygon_initiator,
+    total_vector,
 )
 from .palette import CINNABAR, hex_to_rgb
 from .presets import DEFAULT_GENES, GENES_BY_NAME
 
 __all__ = [
     "DESIGN_KEYS",
+    "INITIATOR_SIDES",
     "GeneratorItem",
     "GenFractalFamilySettings",
     "read_design",
@@ -37,6 +41,15 @@ __all__ = [
     "store_design",
     "suspend_auto_update",
 ]
+
+#: 「正多边形」初始形状 → 边数（:attr:`GenFractalFamilySettings.initiator_shape`）。
+INITIATOR_SIDES = {
+    "TRIANGLE": 3,
+    "SQUARE": 4,
+    "PENTAGON": 5,
+    "HEXAGON": 6,
+    "OCTAGON": 8,
+}
 
 #: 预览最多展开到第几级（再往上点数按指数涨，视口预览没有意义）。
 PREVIEW_MAX_LEVEL = 6
@@ -50,6 +63,8 @@ DESIGN_KEYS = {
     "gene": "gen_fractal_family_gene",
     "level": "gen_fractal_family_level",
     "spline_type": "gen_fractal_family_spline",
+    "initiator_shape": "gen_fractal_family_initiator_shape",
+    "initiator_custom": "gen_fractal_family_initiator_custom",
     "initiator_reverse": "gen_fractal_family_initiator_reverse",
 }
 
@@ -106,8 +121,15 @@ def _on_domain_change(self, context):
 
 
 def _preset_items(self, context):
-    """预设下拉的条目：名字 + 家族名做提示。"""
-    return [(item["name"], item["name"], f"{item['name']} · {item['family']}") for item in DEFAULT_GENES]
+    """预设下拉的条目：**家族名在前、曲线名在后**（如 ``G(1, 1) Dragon Curve``）。
+
+    标识符仍然是曲线名（:data:`presets.GENES_BY_NAME` 的键），所以换标签不影响存盘 /
+    回读；家族名放前面是为了在同一段下拉里一眼看出哪些是同族。
+    """
+    return [
+        (item["name"], f"{item['family']} {item['name']}", f"{item['family']} · {item['gene']}")
+        for item in DEFAULT_GENES
+    ]
 
 
 def _on_preset_change(self, context):
@@ -122,6 +144,37 @@ def _on_geometry_toggle(self, context):
     from . import hud
 
     hud.tag_redraw()
+
+
+def _curve_points(curve, reverse: bool = False):
+    """曲线对象的第 1 条样条 → ``(numpy (n, 2), closed)``；不可用时 ``(None, False)``。
+
+    只取局部坐标、忽略对象变换（与参考实现一致）；Bezier 与 NURBS/多段线都认。
+    """
+    if curve is None or not getattr(curve, "splines", None) or not curve.splines:
+        return None, False
+    spline = curve.splines[0]
+    points = []
+    if spline.type == "BEZIER" and len(spline.bezier_points) > 1:
+        points = [(point.co[0], point.co[1]) for point in spline.bezier_points]
+    elif len(spline.points) > 1:
+        points = [(point.co[0], point.co[1]) for point in spline.points]
+    if len(points) < 2:
+        return None, False
+    if reverse:
+        points.reverse()
+    return np.asarray(points, dtype=float), bool(spline.use_cyclic_u)
+
+
+def _on_initiator_curve(self, context):
+    """指定了曲线对象就顺手勾上「自定义曲线」—— 否则填了曲线却不生效，很难猜。
+
+    那个开关自己的 ``update`` 会标脏 + 排重算，这里不用再补一次。
+    """
+    if self.initiator_curve is not None and not self.initiator_custom:
+        self.initiator_custom = True
+        return
+    _mark_dirty(self, context)
 
 
 def _on_auto_update_toggle(self, context):
@@ -270,16 +323,43 @@ class GenFractalFamilySettings(bpy.types.PropertyGroup):
         update=_mark_dirty,
     )
 
-    initiator_curve: bpy.props.PointerProperty(
-        name="初始曲线",
-        description="留空 = 用从原点到总向量的一条直线；指定一条曲线可做 Koch 雪花这类闭合分形",
-        type=bpy.types.Curve,
+    initiator_shape: bpy.props.EnumProperty(
+        name="初始形状",
+        description=("初始折线（等级 0）：直线 / 正多边形。"
+                     "正多边形是直接算出来的，不用自己建曲线 —— 边长自动等于总向量长度，"
+                     "所以 Koch 雪花这类闭合分形选一下就成形。要用自己画的曲线，"
+                     "勾下面的「自定义曲线」"),
+        items=[
+            ("LINE", "直线", "从原点到总向量的一条直线（默认）"),
+            ("TRIANGLE", "正三角形", "闭合的正三角形：Koch 雪花"),
+            ("SQUARE", "正方形", "闭合的正方形"),
+            ("PENTAGON", "正五边形", "闭合的正五边形"),
+            ("HEXAGON", "正六边形", "闭合的正六边形"),
+            ("OCTAGON", "正八边形", "闭合的正八边形"),
+        ],
+        default="LINE",
         update=_mark_dirty,
     )
 
+    initiator_custom: bpy.props.BoolProperty(
+        name="自定义曲线",
+        description=("勾上就改用 :attr:`initiator_curve` 指定的曲线当初始折线"
+                     "（原来的形状选择保留着，取消勾选就回到它）"),
+        default=False,
+        update=_mark_dirty,
+    )
+
+    initiator_curve: bpy.props.PointerProperty(
+        name="初始曲线",
+        description=("自定义初始折线（只取第 1 条样条、忽略对象变换）。"
+                     "只有在勾上「自定义曲线」时才生效"),
+        type=bpy.types.Curve,
+        update=_on_initiator_curve,
+    )
+
     initiator_reverse: bpy.props.BoolProperty(
-        name="初始曲线反向",
-        description="反过来读初始曲线的点序（分形朝里长还是朝外长）",
+        name="反向",
+        description="反过来读初始折线的点序（分形朝里长还是朝外长）",
         default=False,
         update=_mark_dirty,
     )
@@ -366,9 +446,7 @@ class GenFractalFamilySettings(bpy.types.PropertyGroup):
         elements = self.elements()
         if len(elements) < 2:
             return False
-        total = ComplexInteger(domain=self.domain)
-        for element, _flags in elements:
-            total = total + element
+        total = total_vector(elements)
         return total.norm != 0 and not any(element.norm == 0 for element, _f in elements)
 
     def contraction(self) -> float:
@@ -394,6 +472,37 @@ class GenFractalFamilySettings(bpy.types.PropertyGroup):
             return f"收缩 {ratio:.2f}（偏弱，高级别会明显长大）"
         return f"收缩 {ratio:.2f}"
 
+    def initiator(self):
+        """初始折线 ``(点列, 是否闭合)``；点列为 ``None`` = 从原点到总向量的直线。
+
+        来源分两种（见 :attr:`initiator_custom`）：
+
+        * **勾了「自定义曲线」**：读 :attr:`initiator_curve` 的第 1 条样条；
+        * 否则按 :attr:`initiator_shape`：``LINE`` 是直线（返回 ``None``，交给
+          :func:`lattice.teragon` 现算），正多边形按总向量现算（边长 = ``|总向量|``），
+          不用建任何数据块。
+
+        生成（:mod:`build`）与视口预览（:mod:`preview`）都走这一个入口，两条路永远同形。
+        """
+        if self.initiator_custom:
+            return _curve_points(self.initiator_curve, bool(self.initiator_reverse))
+        sides = INITIATOR_SIDES.get(str(self.initiator_shape))
+        if sides:
+            total = total_vector(self.elements())
+            if total.norm == 0:  # 总向量为零：分形无从展开，退回直线（面板会另有报错）
+                return None, False
+            return polygon_initiator(sides, total, bool(self.initiator_reverse)), True
+        return None, False
+
+    def initiator_segments(self) -> int:
+        """初始折线有几段（估点数用；直线 = 1）。"""
+        if self.initiator_custom:
+            points, closed = _curve_points(self.initiator_curve)
+            if points is None:
+                return 1
+            return max(1, len(points) - 1 + int(closed))
+        return max(1, int(INITIATOR_SIDES.get(str(self.initiator_shape), 1)))
+
     def preview_level(self) -> int:
         """预览实际画的等级（被 :data:`PREVIEW_MAX_LEVEL` 截断）。"""
         return max(0, min(int(self.level), PREVIEW_MAX_LEVEL))
@@ -403,11 +512,19 @@ class GenFractalFamilySettings(bpy.types.PropertyGroup):
         return int(self.level) > PREVIEW_MAX_LEVEL
 
     def geometry_signature(self):
-        """预览缓存键：基因 / 域 / 等级 / 初始曲线一变就换一份。"""
+        """预览缓存键：基因 / 域 / 等级 / 初始形状与曲线一变就换一份。"""
         elements = tuple((item.a, item.b, bool(item.reverse), bool(item.mirror)) for item in self.items)
         initiator = self.initiator_curve
         initiator_key = initiator.name if initiator else ""
-        return (self.domain, elements, self.preview_level(), initiator_key, bool(self.initiator_reverse))
+        return (
+            self.domain,
+            elements,
+            self.preview_level(),
+            bool(self.initiator_custom),
+            str(self.initiator_shape),
+            initiator_key,
+            bool(self.initiator_reverse),
+        )
 
     # --- 基因编辑（HUD 与面板按钮共用） -----------------------------------
 
@@ -485,6 +602,8 @@ def store_design(obj, settings) -> None:
     obj[DESIGN_KEYS["gene"]] = settings.current_gene()
     obj[DESIGN_KEYS["level"]] = int(settings.level)
     obj[DESIGN_KEYS["spline_type"]] = settings.spline_type
+    obj[DESIGN_KEYS["initiator_shape"]] = str(settings.initiator_shape)
+    obj[DESIGN_KEYS["initiator_custom"]] = bool(settings.initiator_custom)
     obj[DESIGN_KEYS["initiator_reverse"]] = bool(settings.initiator_reverse)
 
 
@@ -496,7 +615,9 @@ def read_design(obj, settings) -> int:
         with suspend_auto_update():
             settings.apply_gene(gene)
         found += 1
-    for key, name in (("level", "level"), ("spline_type", "spline_type")):
+    for key, name in (("level", "level"), ("spline_type", "spline_type"),
+                      ("initiator_shape", "initiator_shape"),
+                      ("initiator_custom", "initiator_custom")):
         value = obj.get(DESIGN_KEYS[key])
         if value is not None:
             setattr(settings, name, value)
