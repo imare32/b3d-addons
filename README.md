@@ -292,6 +292,7 @@ blender --command extension build --source-dir "C:\git\b3d-addons\<ext_id>" --ou
 | [`gen_torus_knot`](gen_torus_knot/README.md) | Gen Torus Knot | 参数化环面 (p, q) 结：默认输出 Grease Pencil 笔划（每股一条闭合笔划，几何核心带 POINT 域的 `u_map` / `v_map` 两条属性），可选几何节点把笔划扫成实体管（管半径实时可调） | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 | [`gen_voronoi`](gen_voronoi/README.md) | Gen Voronoi | 生成式平面 Voronoi：网格顶点或 Grease Pencil 的点当种子，实时重划成 GP 笔划（气泡 / 边界裁剪、内缩、逐格填充，逐点带 `cell_index`）；在 GP 编辑模式里画点、拖点即长 | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 | [`gen_lsystem`](gen_lsystem/README.md) | Gen L-System | L-system（公理 + 产生式 + 条件 + 参数表达式）→ turtle 解释成折线，输出 Grease Pencil 笔划：每条分支一笔、**粗细逐点变化**（`!` / `#` / `¤`），可选按粗细 / 按深度 / 按进度三档渐变（进度按弧长逐笔归一）；十套 ABOP 预设、2D 俯视 / 3D 四分之三视角两档场景预设、参数一改自动重算 | 可用（5.2.2 实测） | 无外部依赖 | — |
+| [`gen_imaginary_base`](gen_imaginary_base/README.md) | Gen Imaginary Base | 二次整数环（Z[i] / Z[ω]）上的**进制展开**：底数 b + 数字集 D，`n = Σ dₖ·bᵏ` 取遍 `\|D\|^N` 个地址，画成自仿射点集（twindragon 一类瓦片）。视口 **HUD** 里拖数字 / 底数、滚轮改位数，两个取景档（框数字 / 框整体）；顺带判定数系是否**完全剩余系**（有效进位制）。输出 GP：一个整数一条单顶点笔划，带 `index` / `digit_slot` 数据属性。移植自 TheGrayCuber 的 imaginary_bases | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 
 ### 模拟（`sim_*`）
 

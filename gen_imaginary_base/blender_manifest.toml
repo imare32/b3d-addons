@@ -1,0 +1,28 @@
+schema_version = "1.0.0"
+
+id = "gen_imaginary_base"
+version = "0.1.0"
+name = "Gen Imaginary Base"
+tagline = "Self-affine point sets from imaginary-base numeral systems"
+maintainer = "imare32"
+type = "add-on"
+
+tags = ["Grease Pencil", "Object"]
+
+# 曲线 / GP / 属性 API 在 4.2 就有；HUD 只用 gpu / blf 的稳定接口。
+blender_version_min = "4.2.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+# 不申请任何权限：本插件只读剪贴板以外的输入（没有剪贴板、没有文件访问），
+# 点数预算、点半径这些偏好都走 Blender 自己的偏好文件。
+
+[build]
+paths_exclude_pattern = [
+    "__pycache__/",
+    "/.git/",
+    "/.gitignore",
+    "/.vscode/",
+    "/.temp/",
+    "/*.zip",
+]
