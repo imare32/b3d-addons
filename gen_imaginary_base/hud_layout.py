@@ -392,6 +392,20 @@ def build(state) -> dict:
             theme["header"],
         )
     )
+    # 标题栏整条的兜底命中区。**必须在按钮之前追加**：``hit`` 是逆序遍历（后画的
+    # 在上），把 ``bar`` 放最前，逆序时就最后才轮到它 —— 于是点关闭 / 切环按钮时
+    # 先命中按钮，点标题栏空白才回落到 ``bar``（吞掉点击，不让它穿透到视口选物体）。
+    # 早先 ``bar`` 是在按钮之后追加的，结果它把整条标题栏盖住，按钮永远点不到。
+    hotspots.append(
+        _rect_hotspot(
+            origin_x,
+            origin_y + height - HEADER_HEIGHT,
+            width,
+            HEADER_HEIGHT,
+            "bar",
+            "bar",
+        )
+    )
 
     button = HEADER_HEIGHT - 8.0
     close_x = origin_x + width - button - 6.0
@@ -434,16 +448,6 @@ def build(state) -> dict:
             _elide(title, 11.5, title_right - origin_x - 10),
             11.5,
             theme["header_text"],
-        )
-    )
-    hotspots.append(
-        _rect_hotspot(
-            origin_x,
-            origin_y + height - HEADER_HEIGHT,
-            width,
-            HEADER_HEIGHT,
-            "bar",
-            "bar",
         )
     )
 
