@@ -36,7 +36,7 @@ class IMAGINARYBASE_UL_digits(bpy.types.UIList):
         settings = _settings(context)
         domain = settings.domain if settings is not None else "I"
         row = layout.row(align=True)
-        row.label(text=f"{index:02d}", icon="DOT" if index else "RADIOBUT_OFF")
+        row.label(text=f"#{index:02d}", icon="DOT" if index else "RADIOBUT_OFF")
         text = ring.format_qint(domain, item.a, item.b)
         row.label(text=text)
         sub = row.row(align=True)
@@ -159,7 +159,7 @@ class IMAGINARYBASE_PT_panel(bpy.types.Panel):
             text=tfmt("Places (max {max})", max=ceiling),
         )
 
-        box.prop(settings, "colour_mode", text=t("Colour By"))
+        box.prop(settings, "colour_mode", text=t("Colour By"), expand=True)
         if settings.colour_mode == "PLACE":
             box.prop(settings, "colour_place", text=t("Place"), slider=True)
 
