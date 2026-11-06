@@ -1,23 +1,10 @@
 {
-  // 本仓库按「方式 A」注册为本地扩展仓库（id = b3d_addons），模块名因此是
-  // bl_ext.b3d_addons.<ext_id>。Blender Development 扩展默认按 vscode_development
-  // 拼模块名，不改这一项就会报 ModuleNotFoundError: bl_ext.vscode_development.<ext_id>。
+  // 本仓库按「方式 A」注册为本地扩展仓库：仓库 id = b3d_addons，
+  // 目录直接指向工作区根（use_custom_directory = true，custom_directory = C:\git\b3d-addons）。
+  // 于是每个含 blender_manifest.toml 的子目录都被自动发现，模块名是 bl_ext.b3d_addons.<ext_id>。
+  //
+  // `blender.addonFolders` 故意留空：Blender 自己会扫全部子目录，再让启动器往
+  // vscode_development / 仓库目录里造链接，只会在两处重复登记（而且那份手写列表迟早会过期）。
   "blender.addon.extensionsRepository": "b3d_addons",
-
-  // 要加载的扩展目录（相对工作区根）。加了新扩展就补一行。
-  "blender.addonFolders": [
-    "./gen_zellij",
-    "./gen_girih",
-    "./gen_rosette",
-    "./gen_dome",
-    "./gen_celtic",
-    "./gen_tsubayaki",
-    "./sim_game_of_life",
-    "./sim_flocking",
-    "./sim_catenary",
-    "./sim_dendrite",
-    "./sim_hilbert",
-    "./sim_jacobi",
-    "./sim_reaction_diffusion"
-  ]
+  "blender.addonFolders": []
 }

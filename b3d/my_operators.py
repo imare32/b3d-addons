@@ -208,6 +208,22 @@ class ToggleWireframeShow(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class SwitchLanguage(bpy.types.Operator):
+    """切换中英文"""
+
+    bl_idname = "b3d.switch_language"
+    bl_label = "Switch Language"
+    bl_options = {"REGISTER"}
+
+    def execute(self, context):
+        view = context.preferences.view
+        if view.language == "zh_HANS":
+            view.language = "en_US"
+        else:
+            view.language = "zh_HANS"
+        return {"FINISHED"}
+
+
 addon_keymaps = []
 
 
@@ -253,6 +269,17 @@ def register():
                 shift=True,
             )
             addon_keymaps.append((km, kmi))
+
+        # Register shortcut Alt + Shift + R globally to switch UI language
+        km = kc.keymaps.new(name="Window", space_type="EMPTY", region_type="WINDOW")
+        kmi = km.keymap_items.new(
+            SwitchLanguage.bl_idname,
+            type="R",
+            value="PRESS",
+            alt=True,
+            shift=True,
+        )
+        addon_keymaps.append((km, kmi))
 
 
 def unregister():

@@ -48,7 +48,7 @@ if (-not $Version) {
     }
 }
 
-$MajorMinor = ($Version -split '\.')[0..1] -join ''
+$MajorMinor = ($Version -split '\.')[0..1] -join '.'
 $DirName    = "blender-$Version-windows-x64"
 $InstallPath = Join-Path $ProgramsDir $DirName
 $ExePath     = Join-Path $InstallPath "blender.exe"

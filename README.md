@@ -19,6 +19,8 @@ b3d-addons/
 │  ├─ __init__.py            # 入口，提供 register() / unregister()
 │  ├─ *.py                   # 功能模块
 │  └─ README.md              # 可选，单插件说明
+├─ b3d/                      # 个人工具箱扩展（原独立仓库，已用 git subtree 并入，历史保留）
+├─ fractal_family → C:\git\fractal_family   # junction：指向仓库外的独立项目（见下）
 ├─ _shared/                  # 可选，多个插件共用的 Python 包（链接进 scripts/modules）
 ├─ .vscode/settings.json     # 可选，开发机配置（见 VSCode 插件开发）
 ├─ pyproject.toml            # 可选，ruff 格式化 / uv 索引配置
@@ -30,6 +32,20 @@ b3d-addons/
 
 > 仓库根目录下的 `README.md`、`pyproject.toml`、`_shared/` 等非扩展内容不会被识别为插件（Blender 只扫描
 > 含 `blender_manifest.toml` 的子目录和 `.zip` 包），可放心与其他文件混放。
+
+### `fractal_family` 为什么是 junction
+
+`fractal_family`（分形曲线 + 视口 HUD，已上架 Blender 官方扩展商店）有**自己一套 git 与发布流程**，
+不适合塞进本仓库的历史里，所以它仍留在 `C:\git\fractal_family`，只在工作区里放一个 junction：
+
+- 目录名与 manifest 的 `id` 一致（都叫 `fractal_family`），所以本地开发时模块名是
+  `bl_ext.b3d_addons.fractal_family`；
+- 商店安装的那一份属于 `blender_org` 仓库，模块名是 `bl_ext.blender_org.fractal_family`；
+- **两者不能同时启用**：同一个插件注册的算子 / 类名会撞（`register_class` 报 already registered，
+  HUD 也会挂两套句柄）。开发时启用前者、把商店那份禁掉，反之亦然。
+- junction 已在 `.gitignore` 里排除，新机器 clone 后需要重建一条：
+  `New-Item -ItemType Junction -Path .\fractal_family -Target C:\git\fractal_family`
+
 
 ## Shell
 
@@ -59,20 +75,34 @@ $env:BLENDER_USER_RESOURCES = "C:\git\blender\5.2"
 
 本仓库的子目录都是扩展，按下面任一方式让 Blender 能加载。
 
-### 方式 A：整仓注册为本地扩展仓库（推荐）
+### 方式 A：整仓注册为本地扩展仓库（当前采用）
 
 本地仓库的 `directory` 就是源码目录，扩展**在原地加载**，不产生符号链接或拷贝，改完代码重载即可生效。
+仓库用的是 **custom directory**（`use_custom_directory = true` + `custom_directory = C:\git\b3d-addons`），
+于是这个目录下**每个含 `blender_manifest.toml` 的子目录都会被自动发现** —— 新增插件不需要任何额外操作，
+也不用给每个插件建 junction。
 
 ```powershell
 # 注册（一次性；仓库 id = b3d_addons，界面显示名 = b3d-addons）
 blender --command extension repo-add b3d_addons --name "b3d-addons" --directory "C:\git\b3d-addons"
 
 # 校验注册结果
-blender --command extension repo-list      # 应包含 b3d_addons
+blender --command extension repo-list      # 应包含 b3d_addons，directory 指向工作区根
 blender --command extension list           # 应列出仓库内的各个扩展
 
 # 卸载仓库（不影响源码）
 blender --command extension repo-remove b3d_addons
+```
+
+已经在用、但想从「默认目录 + junction」切到 custom directory 时，改偏好即可（不必 repo-remove，
+已启用插件的状态和模块名都不会变）：
+
+```python
+import bpy
+repo = bpy.context.preferences.extensions.repos["b3d_addons"]
+repo.custom_directory = r"C:\git\b3d-addons"
+repo.use_custom_directory = True
+bpy.ops.wm.save_userpref()
 ```
 
 要点：
@@ -83,18 +113,16 @@ blender --command extension repo-remove b3d_addons
 - 同一扩展不要同时出现在多个仓库里（例如既在 `b3d_addons` 又在 `vscode_development`），否则会出现重名条目。
 - 用这种方式的话，VSCode 里必须把 `blender.addon.extensionsRepository` 也设成 `b3d_addons`：
   模块名是 `bl_ext.<仓库 id>.<目录名>`，不设就会去找 `bl_ext.vscode_development.<ext_id>` 而失败。
+  同时把 `blender.addonFolders` 留空 —— 仓库已经把全部子目录扫进来了，再让启动器造链接只会在两处重复登记。
 
-### 方式 B：junction 链接到 `vscode_development`（与 b3d 相同）
+### 方式 B：junction 链接到 `vscode_development`（旧方案，已弃用）
 
-沿用 VSCode 扩展默认仓库，逐个扩展做目录联接：
+早期是逐个扩展做目录联接。现在仓库用 custom directory 直接扫工作区根，这种方式不再需要；
+保留说明只为看懂历史目录里的残留链接。
 
 | 链接位置 | 目标 |
 |---|---|
 | `C:\git\blender\5.2\extensions\vscode_development\<ext_id>` | `C:\git\b3d-addons\<ext_id>` |
-
-```powershell
-New-Item -ItemType Junction -Path "C:\git\blender\5.2\extensions\vscode_development\<ext_id>" -Target "C:\git\b3d-addons\<ext_id>"
-```
 
 此方式下模块名为 `bl_ext.vscode_development.<ext_id>`（仓库目录固定在
 `C:\git\blender\5.2\extensions\vscode_development`）。注意 Blender Development 扩展在需要时也会自己建立这类
@@ -308,6 +336,18 @@ blender --command extension build --source-dir "C:\git\b3d-addons\<ext_id>" --ou
 | [`sim_pendulum`](sim_pendulum/README.md) | Sim Pendulum | 双摆相空间阵列：N×N 个理想双摆逐帧 RK4 推进，每个摆一抹 3 点 GP 折线（逐点半径 + 角速度 / 相角配色），两档初值（θ1–θ2 摆角平面 / θ1–dθ1 相空间切片）；可切「网格 + 几何节点」后端做同步开销对照 | 可用（5.2.2 实测） | 无必需依赖（NumPy 版零依赖；可选 taichi GPU：1 万摆 8.2 → 3.4 ms/帧） | — |
 | [`sim_reaction_diffusion`](sim_reaction_diffusion/README.md) | Sim Reaction Diffusion | Gray-Scott 反应扩散：8 套经典 (F, k) 预设长成迷宫 / 斑点 / 蠕虫 / 孔洞，逐帧推进后画成 3D 高度场（图案 / 水墨 / 轮廓三种配色） | 可用（5.2.2 实测） | 可选 taichi（GPU 加速，200² × 32 子步约 3.4 ms/帧）；缺失时回退纯 NumPy（约 6.8 ms/帧） | — |
 | [`sim_space_colonization`](sim_space_colonization/README.md) | Sim Space Colonization | 太空殖民生长：任意输入网格表面按面积撒吸收点，枝条逐帧长过去（贴表面 = 藤蔓 / 自由空间 = 树枝），每个分叉到枝尖画成一笔 GP（逐点半径 + 根→梢的逐点配色）；不选目标会自动建缺省输入网格 | 可用（5.2.2 实测） | 可选 scipy（KD 树，约 1.9 ms/子步）或 taichi（GPU 暴力，1.4 ms）；都缺时回退纯 NumPy（18.6 ms/子步） | — |
+
+### 工具箱（`b3d`）
+
+| 扩展 id | 名称 | 用途 | 状态 | 依赖 / 权限 | 快捷键 |
+|---|---|---|---|---|---|
+| [`b3d`](b3d/README.md) | B3d | 个人效率工具箱：一组不构成完整作品的小工具（节点整理、资产窗口、配色等），由 `auto_load` 自动注册 | 可用（5.2.2 实测） | 无外部依赖 | 见其 README |
+
+这个目录原是独立的 git 仓库（github: imare32/b3d），为了统一在本仓库发版，用 `git subtree` 并入：
+内容与历史都完整保留（`git log -- b3d/` 可查），后续在这里开发、提交。
+
+> `fractal_family` 也会通过本仓库被 Blender 发现（junction 指向 `C:\git\fractal_family`），但它是
+> 独立的 git 与商店发布流程，**不列在上表**里，也不随本仓库提交。
 
 新增一个扩展的最小步骤：
 
