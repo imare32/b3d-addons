@@ -39,13 +39,17 @@ class IMAGINARYBASE_UL_digits(bpy.types.UIList):
     ):
         settings = _settings(context)
         domain = settings.domain if settings is not None else "I"
-        row = layout.row(align=True)
-        row.label(text=f"#{index:02d}")
-        fields = row.row(align=True)
+        # 两列**固定宽度**：UIList 每行等宽，split 的比例宽度就等效于定宽 —— 否则
+        # 行尾文字长短不一，中间的数字框会跟着参差不齐。左侧序号就三个字符，
+        # 窄一点；剩余部分再切成 数字框 | 完整表示，行尾右对齐。
+        head = layout.split(factor=0.11, align=True)
+        head.label(text=f"#{index:02d}")
+        body = head.split(factor=0.72, align=True)
+        fields = body.row(align=True)
         fields.enabled = index != 0  # 0 号恒为零，是数系的原点，不可改
         fields.prop(item, "a", text="")
         fields.prop(item, "b", text="")
-        tail = row.row(align=True)
+        tail = body.row(align=True)
         tail.alignment = "RIGHT"
         tail.label(text=ring.format_qint(domain, item.a, item.b))
 
