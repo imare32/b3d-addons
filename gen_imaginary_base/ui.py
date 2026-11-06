@@ -26,7 +26,11 @@ def _box(layout, title: str, icon: str = "NONE"):
 
 
 class IMAGINARYBASE_UL_digits(bpy.types.UIList):
-    """数字集列表：每行 ``#k  a + bω``。"""
+    """数字集列表：每行 ``#NN  [实部] [虚部]  完整表示``。
+
+    a / b 就地编辑（照商店版的 gene 列表），行尾是 ``ring.format_qint`` 的完整
+    虚数表示；原先中段那列裸坐标 ``a,b`` 和列表底下那对 A/B 编辑框都省了。
+    """
 
     bl_idname = "IMAGINARYBASE_UL_digits"
 
@@ -36,12 +40,14 @@ class IMAGINARYBASE_UL_digits(bpy.types.UIList):
         settings = _settings(context)
         domain = settings.domain if settings is not None else "I"
         row = layout.row(align=True)
-        row.label(text=f"#{index:02d}", icon="DOT" if index else "RADIOBUT_OFF")
-        text = ring.format_qint(domain, item.a, item.b)
-        row.label(text=text)
-        sub = row.row(align=True)
-        sub.alignment = "RIGHT"
-        sub.label(text=f"{item.a},{item.b}")
+        row.label(text=f"#{index:02d}")
+        fields = row.row(align=True)
+        fields.enabled = index != 0  # 0 号恒为零，是数系的原点，不可改
+        fields.prop(item, "a", text="")
+        fields.prop(item, "b", text="")
+        tail = row.row(align=True)
+        tail.alignment = "RIGHT"
+        tail.label(text=ring.format_qint(domain, item.a, item.b))
 
 
 class IMAGINARYBASE_PT_panel(bpy.types.Panel):
@@ -138,13 +144,8 @@ class IMAGINARYBASE_PT_panel(bpy.types.Panel):
             "active_digit",
             rows=min(7, max(3, len(settings.digits))),
         )
-        if len(settings.digits):
-            index = min(settings.active_digit, max(0, len(settings.digits) - 1))
-            item = settings.digits[index]
-            row = box.row(align=True)
-            row.enabled = index != 0  # 0 号恒为零，不可改
-            row.prop(item, "a", text=t("A"))
-            row.prop(item, "b", text=t("B"))
+        # 实部 / 虚部直接在列表行里就地编辑（见 IMAGINARYBASE_UL_digits），
+        # 列表底下不再放一对 A/B 编辑框。
 
     # --- 位数与上色 -------------------------------------------------------
 
