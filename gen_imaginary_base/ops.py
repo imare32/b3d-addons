@@ -237,8 +237,13 @@ class IMAGINARYBASE_OT_hud(bpy.types.Operator):
         if context.area is None or context.area.type != "VIEW_3D":
             self.report({"WARNING"}, t("The HUD only runs in a 3D viewport"))
             return {"CANCELLED"}
-        if hud.session() is None:
-            hud.begin(context)
+        if hud.session() is not None:
+            # 已经开着：再点一次面板按钮就是收起来（与 × / Q / Esc 等效）。
+            # 少了这个分支，点击会走到下面再挂一个 modal handler —— HUD 关不掉，
+            # 光标还被重新设成十字。
+            self._finish(context)
+            return {"FINISHED"}
+        hud.begin(context)
         context.window_manager.modal_handler_add(self)
         context.window.cursor_set("CROSSHAIR")
         return {"RUNNING_MODAL"}
