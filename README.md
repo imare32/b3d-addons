@@ -51,11 +51,21 @@ b3d-addons/
   HUD 也会挂两套句柄）。开发时启用前者、把商店那份禁掉，反之亦然。
 - junction 已在 `.gitignore` 里排除，新机器 clone 后需要重建一条：
   `New-Item -ItemType Junction -Path .\gen_fractal_family -Target C:\git\fractal_family`
-- **从 VSCode 启动会多出一条链接，属正常**：源码目录在仓库外，Blender Development 必然要
-  链一次才能启用，落点是 `extensions\<extensionsRepository>\<moduleName>`，即
-  `C:\git\blender\5.2\extensions\b3d_addons\gen_fractal_family`。仓库用的是 custom
-  directory（`C:\git\b3d-addons`），那个目录不被扫描，所以这条链接是空的——不用管，
-  删了下次启动还会建。详见「VSCode 插件开发」里的说明。
+- ⚠️ **别在 `C:\git\fractal_family` 这个窗口里按 `Blender: Start`**。启动器会先跑
+  `_remove_duplicate_extension_links()`，把「指向同一目标」的链接当重复项删掉 —— 也就是
+  **删掉本工作区这条 junction**，然后把链接建到 `extensions\b3d_addons\<moduleName>`。
+  那个目录不被扫描（仓库用的是 custom directory），于是紧接着的 `addon_enable` 直接失败：
+
+  ```text
+  Error: [WinError 3] 系统找不到指定的路径:
+         'C:\git\b3d-addons\gen_fractal_family\__init__.py'
+  ```
+
+  修复只需重建链接（源仓库不受影响）：
+  `New-Item -ItemType Junction -Path C:\git\b3d-addons\gen_fractal_family -Target C:\git\fractal_family`
+
+  要调试这个插件，改从别的工作区启动（例如直接开 `C:\git\b3d-addons`）——`addonFolders`
+  为空时启动器不碰任何链接，插件保持你在偏好里启用的状态，改完用扩展的重载命令即可。
 
 
 ## Shell
@@ -218,8 +228,14 @@ New-Item -ItemType Junction -Path "C:\git\blender\5.2\scripts\modules\b3d_shared
 >   directory → **不建链接**。
 > - `C:\git\fractal_family`（仓库外）：父目录 `C:\git` 不是任何仓库目录 → **会建**，落在
 >   `extensions\b3d_addons\<moduleName>`（由 `extensionsRepository` 决定，不是 `user_default`）。
->   由于仓库用的是 custom directory，`extensions\b3d_addons` 根本不被扫描，那条链接是空的：
->   不用管，删了下次启动还会建。别去 `extensions\b3d_addons\` 下手动启用它。
+>
+> **⚠️ 而且它会先删掉「指向同一目标」的已有链接。** `_remove_duplicate_extension_links()` 会遍历
+> **所有**仓库目录（含 custom directory）找同一目标的链接并删除 —— 对本仓库就是删掉
+> `C:\git\b3d-addons\gen_fractal_family` 这条 junction，再往 `extensions\b3d_addons\` 建新的。
+> 新目录不被扫描，所以紧接着的 `addon_enable("bl_ext.b3d_addons.gen_fractal_family")` 会报
+> `WinError 3 ...\gen_fractal_family\__init__.py` 找不到。
+> 结论：**别在 `C:\git\fractal_family` 窗口里启动 Blender**；去 `C:\git\b3d-addons` 那边启动
+> 不会有这个问题（`addonFolders` 为空，启动器不碰任何链接）。详见上文「为什么是 junction」。
 
 ### 启动与加载
 
