@@ -538,8 +538,11 @@ def build(state) -> dict:
         slot = int(point[2]) if len(point) > 2 else 0
         colour = tint_cache.get(slot)
         if colour is None:
-            base = palette.hex_to_rgb(palette.digit_colour(slot))
-            colour = mix(base, GRID_BG[:3], 0.18)
+            # 局部名千万别叫 ``base`` —— 外层那个 ``base`` 是底数坐标，菱形还在用；
+            # 一旦在这里被颜色覆盖，菱形就会画到「颜色 R/G 分量」对应的格点上
+            # （实测症状：拖底数时点云跟着变，菱形钉在原地不动）。
+            tint = palette.hex_to_rgb(palette.digit_colour(slot))
+            colour = mix(tint, GRID_BG[:3], 0.18)
             tint_cache[slot] = colour
         primitives.append(_rect(sx - size / 2.0, sy - size / 2.0, size, size, colour))
 
