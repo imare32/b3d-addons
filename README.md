@@ -274,6 +274,10 @@ blender --command extension build --source-dir "C:\git\b3d-addons\<ext_id>" --ou
 分两类：**生成式**（`gen_*`，一次算好结构 / 图案，参数一改就重编）与
 **模拟**（`sim_*`，逐帧推进状态，靠时间轴播放）。前缀与类别一致，新增扩展也照此命名。
 
+> **Fractal Family 已移出本仓库。** 复整数「基因」分形曲线扩展（含视口 HUD）现在独立开发，
+> 仓库为 `C:\git\fractal_family`，2.0.0 起在 Blender 官方扩展商店发布，扩展 id 也从
+> `gen_fractal_family` 改为 `fractal_family`。本仓库不再保留自用版本。
+
 ### 生成式（`gen_*`）
 
 | 扩展 id | 名称 | 用途 | 状态 | 依赖 / 权限 | 快捷键 |
@@ -287,7 +291,6 @@ blender --command extension build --source-dir "C:\git\b3d-addons\<ext_id>" --ou
 | [`gen_tsubayaki`](gen_tsubayaki/README.md) | Gen Tsubayaki | 生成式弦线族（两条轨道之间的弦）：单轨星图 / 按格子裁边的分块开片，`n` / `t` 由帧号闭式生长 + 逐弦墨色淡出，渲染为 Grease Pencil v3（默认深底反白 + GP 效果器辉光） | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 | [`gen_torus_knot`](gen_torus_knot/README.md) | Gen Torus Knot | 参数化环面 (p, q) 结：默认输出 Grease Pencil 笔划（每股一条闭合笔划，几何核心带 POINT 域的 `u_map` / `v_map` 两条属性），可选几何节点把笔划扫成实体管（管半径实时可调） | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
 | [`gen_voronoi`](gen_voronoi/README.md) | Gen Voronoi | 生成式平面 Voronoi：网格顶点或 Grease Pencil 的点当种子，实时重划成 GP 笔划（气泡 / 边界裁剪、内缩、逐格填充，逐点带 `cell_index`）；在 GP 编辑模式里画点、拖点即长 | 可用（5.2.2 实测） | 无外部依赖（用 Blender 自带 numpy） | — |
-| [`gen_fractal_family`](gen_fractal_family/README.md) | Gen Fractal Family | 复整数「基因」生成分形曲线家族（G 高斯 / E 艾森斯坦点阵，96 条经典预设）：视口 **HUD** 里直接拖格点上的节点、点 R/M 切标记、滚轮换等级；预览（默认关闭）是 `POST_VIEW` 立即模式绘制（**不建任何临时对象**），输出曲线 / 每级对象 / 形态键生长动画 | 可用（5.2.2 实测） | 剪贴板权限（粘贴基因）；无外部依赖（用 Blender 自带 numpy） | — |
 | [`gen_lsystem`](gen_lsystem/README.md) | Gen L-System | L-system（公理 + 产生式 + 条件 + 参数表达式）→ turtle 解释成折线，输出 Grease Pencil 笔划：每条分支一笔、**粗细逐点变化**（`!` / `#` / `¤`），可选按粗细 / 按深度 / 按进度三档渐变（进度按弧长逐笔归一）；十套 ABOP 预设、2D 俯视 / 3D 四分之三视角两档场景预设、参数一改自动重算 | 可用（5.2.2 实测） | 无外部依赖 | — |
 
 ### 模拟（`sim_*`）
