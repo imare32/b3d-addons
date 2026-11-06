@@ -28,6 +28,7 @@ from . import hud_layout, preview
 from .i18n import t as _translation
 
 __all__ = [
+    "active",
     "begin",
     "end",
     "fit_scope",
@@ -243,7 +244,17 @@ def _default_origin(height: float):
 
 
 def session():
+    """HUD 会话字典；没在运行时是 ``None``。"""
     return _SESSION
+
+
+def active() -> bool:
+    """HUD 是否正在运行。
+
+    面板按钮的 ``depress`` 之类只吃 ``bool``，别把 :func:`session` 的返回值直接塞进去
+    ——``None`` 会让 ``UILayout.operator()`` 抛 TypeError，整块面板都画不出来。
+    """
+    return _SESSION is not None
 
 
 def begin(context, region=None):

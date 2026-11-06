@@ -145,7 +145,7 @@ class IMAGINARYBASE_PT_panel(bpy.types.Panel):
         row = box.row(align=True)
         row.operator("imaginarybase.fit", text=t("Frame in Viewport"), icon="VIEWZOOM")
         row.operator(
-            "imaginarybase.hud", text=t("HUD"), icon="WINDOW", depress=hud.session()
+            "imaginarybase.hud", text=t("HUD"), icon="WINDOW", depress=hud.active()
         )
         box.prop(settings, "show_preview", text=t("Viewport Preview"))
 
