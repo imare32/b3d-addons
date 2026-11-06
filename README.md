@@ -51,6 +51,11 @@ b3d-addons/
   HUD 也会挂两套句柄）。开发时启用前者、把商店那份禁掉，反之亦然。
 - junction 已在 `.gitignore` 里排除，新机器 clone 后需要重建一条：
   `New-Item -ItemType Junction -Path .\gen_fractal_family -Target C:\git\fractal_family`
+- **从 VSCode 启动会多出一条链接，属正常**：源码目录在仓库外，Blender Development 必然要
+  链一次才能启用，落点是 `extensions\<extensionsRepository>\<moduleName>`，即
+  `C:\git\blender\5.2\extensions\b3d_addons\gen_fractal_family`。仓库用的是 custom
+  directory（`C:\git\b3d-addons`），那个目录不被扫描，所以这条链接是空的——不用管，
+  删了下次启动还会建。详见「VSCode 插件开发」里的说明。
 
 
 ## Shell
@@ -204,10 +209,17 @@ New-Item -ItemType Junction -Path "C:\git\blender\5.2\scripts\modules\b3d_shared
 > **踩过的坑**：`blender.addon.extensionsRepository` 没设成 `b3d_addons` 时，
 > `Blender: Start` 会失败并报
 > `ModuleNotFoundError: Add-on not loaded: "bl_ext.vscode_development.<ext_id>"`。
-> 原因是扩展按 `bl_ext.<extensionsRepository>.<目录名>` 拼模块名：本仓库的扩展已经在
-> `b3d_addons` 仓库目录里，扩展不会再去建 junction，于是 `vscode_development` 下根本
-> 没有这个模块。改完设置需要 `Blender: Stop` → `Blender: Start`（必要时重载 VSCode
-> 窗口）才生效。
+> 原因是模块名按 `bl_ext.<extensionsRepository>.<moduleName>` 拼。改完设置需要
+> `Blender: Stop` → `Blender: Start`（必要时重载 VSCode 窗口）才生效。
+>
+> **这个设置只管「叫什么名字 / 链接建到哪」，不管「要不要建链接」。** 是否建链接只看一件事：
+> 源码目录是不是已经在某个扩展仓库的目录里（`Path(repo_dir) == load_dir.parent`）。
+> - 本仓库自己的插件：源码就在 `C:\git\b3d-addons\<ext_id>`，正是 `b3d_addons` 的 custom
+>   directory → **不建链接**。
+> - `C:\git\fractal_family`（仓库外）：父目录 `C:\git` 不是任何仓库目录 → **会建**，落在
+>   `extensions\b3d_addons\<moduleName>`（由 `extensionsRepository` 决定，不是 `user_default`）。
+>   由于仓库用的是 custom directory，`extensions\b3d_addons` 根本不被扫描，那条链接是空的：
+>   不用管，删了下次启动还会建。别去 `extensions\b3d_addons\` 下手动启用它。
 
 ### 启动与加载
 
