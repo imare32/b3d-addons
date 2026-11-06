@@ -20,7 +20,7 @@ from .ring import format_qint, parse_qint
 __all__ = [
     "MAX_DIGITS",
     "PRESETS",
-    "PRESET_NAMES",
+    "PRESET_ENUM_ITEMS",
     "parse_preset",
     "preset_by_name",
     "preset_label",
@@ -165,16 +165,6 @@ PRESETS = (
     ),
 )
 
-#: 面板下拉用的 ``(id, label, description)``。
-PRESET_NAMES = tuple(
-    (
-        f"{index:02d}",
-        f"{index + 1:02d} · {code[:46]}{'…' if len(code) > 46 else ''}",
-        (f"{code}\n\ncredit: {credit}" if credit else code),
-    )
-    for index, (code, credit) in enumerate(PRESETS)
-)
-
 _UNIT = {"I": "i", "W": "ω"}
 
 
@@ -240,6 +230,15 @@ def preset_by_name(name: str):
     return parse_preset(PRESETS[index][0])
 
 
+def _ordinal(number: int) -> str:
+    """``1 -> "1st"``、``2 -> "2nd"``、``3 -> "3rd"``、``11 -> "11th"``。"""
+    if 10 <= number % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(number % 10, "th")
+    return f"{number}{suffix}"
+
+
 def preset_label(code: str) -> str:
     """下拉里显示的一行名字：``2i · 4 digits`` / ``-1+i · 2 digits · by lead``。
 
@@ -256,5 +255,31 @@ def preset_label(code: str) -> str:
     if data["colour_mode"] == "LEAD":
         return f"{label} · by lead"
     if data["colour_mode"] == "PLACE":
-        return f"{label} · by {data['colour_place']}th"
+        return f"{label} · by {_ordinal(data['colour_place'])}"
     return label
+
+
+def _enum_items() -> tuple:
+    items = [("CUSTOM", "Custom", "Use the base and digits edited here", "NONE", 0)]
+    for index, (code, credit) in enumerate(PRESETS):
+        description = code + (f"\n\ncredit: {credit}" if credit else "")
+        items.append(
+            (
+                f"{index:02d}",
+                f"{index + 1:02d} · {preset_label(code)}",
+                description,
+                "PRESET",
+                index + 1,
+            )
+        )
+    return tuple(items)
+
+
+#: 面板下拉的枚举项，**模块级常量** —— 不要换回 ``items=<回调>``。
+#:
+#: 起因是下拉里 44 条名字全成了乱码。逐项排除后确认：静态枚举 44 条显示完全正常，
+#: 回调式 44 条就乱，而回调式只放 3 条也正常 —— 数据本身没问题，出问题的是
+#: "在回调里现造字符串"这条路径：菜单拿到的 label 指针活不过回调返回那一刻。
+#: 于是干脆在导入时把 44 条一次算好，交给 RNA 在注册时复制走，不再依赖 Python
+#: 对象的存活期。预设是写死的常量，本来也不需要每次访问都重算。
+PRESET_ENUM_ITEMS = _enum_items()

@@ -112,15 +112,6 @@ class DigitItem(bpy.types.PropertyGroup):
 # ---------------------------------------------------------------------------
 
 
-def _preset_items(self, context):
-    items = [("CUSTOM", "Custom", "Use the base and digits edited here", "NONE", 0)]
-    for index, (code, credit) in enumerate(_presets.PRESETS):
-        label = f"{index + 1:02d} · {_presets.preset_label(code)}"
-        description = code + (f"\n\ncredit: {credit}" if credit else "")
-        items.append((f"{index:02d}", label, description, "PRESET", index + 1))
-    return items
-
-
 def _on_preset(self, context=None) -> None:
     """选了一条预设：把底数与数字整体换掉（之后照样可以手动改）。"""
     data = _presets.preset_by_name(self.preset)
@@ -193,7 +184,7 @@ class ImaginaryBaseSettings(bpy.types.PropertyGroup):
     preset: bpy.props.EnumProperty(
         name="Preset",
         description="Classic numeral systems, ported from TheGrayCuber's imaginary_bases",
-        items=_preset_items,
+        items=_presets.PRESET_ENUM_ITEMS,
         update=_on_preset,
     )
 
