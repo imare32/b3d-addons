@@ -18,6 +18,34 @@ __all__ = ["classes"]
 ZOOM_MIN = 4.0
 ZOOM_MAX = 140.0
 
+#: 光标照 fractal_family：**DEFAULT 起步**，悬停可拖标记才变 HAND，其余一律 DEFAULT。
+#: 早先整个会话都 CROSSHAIR —— 按钮一点下去光标就变十字，像出了什么错。
+_CURSOR_DRAG = "HAND"
+_CURSOR_DEFAULT = "DEFAULT"
+
+
+def _cursor_for(hotspot) -> str:
+    """悬停到某个热点时该用哪个光标。"""
+    if hotspot is not None and hotspot["kind"] in {"digit", "base"}:
+        return _CURSOR_DRAG
+    return _CURSOR_DEFAULT
+
+
+def _window_region(context):
+    """HUD 所在的 WINDOW region —— 无论算子从哪儿触发。
+
+    面板按钮在侧栏里，``context.region`` 那时是 UI region；而 POST_PIXEL 绘制与
+    ``mouse_region_*`` 用的都是 WINDOW region。照 fractal_family 的同名函数搬。
+    """
+    region = getattr(context, "region", None)
+    if getattr(region, "type", "") == "WINDOW":
+        return region
+    area = getattr(context, "area", None)
+    for candidate in getattr(area, "regions", ()) or ():
+        if candidate.type == "WINDOW":
+            return candidate
+    return region
+
 
 def _settings(context):
     return getattr(context.scene, "imaginarybase", None)
@@ -239,13 +267,13 @@ class IMAGINARYBASE_OT_hud(bpy.types.Operator):
             return {"CANCELLED"}
         if hud.session() is not None:
             # 已经开着：再点一次面板按钮就是收起来（与 × / Q / Esc 等效）。
-            # 少了这个分支，点击会走到下面再挂一个 modal handler —— HUD 关不掉，
-            # 光标还被重新设成十字。
+            # 少了这个分支，点击会走到下面再挂一个 modal handler —— HUD 关不掉。
             self._finish(context)
             return {"FINISHED"}
-        hud.begin(context)
+        hud.begin(context, region=_window_region(context))
         context.window_manager.modal_handler_add(self)
-        context.window.cursor_set("CROSSHAIR")
+        # 光标保持平常的样子；悬停到可拖标记上才变 HAND（见 _hover）
+        self._set_cursor(context, _CURSOR_DEFAULT)
         return {"RUNNING_MODAL"}
 
     # --- 事件 -------------------------------------------------------------
@@ -304,21 +332,27 @@ class IMAGINARYBASE_OT_hud(bpy.types.Operator):
                     return {"RUNNING_MODAL"} if inside else {"PASS_THROUGH"}
                 if spot["kind"] in {"digit", "base"}:
                     session["drag"] = spot["id"]
-                    context.window.cursor_set("SCROLL_XY")
                     context.area.tag_redraw()
                     return {"RUNNING_MODAL"}
-                self._press(context, settings, spot)
+                self._press(context, settings, session, spot, mouse)
                 return {"RUNNING_MODAL"}
             if not dragging:
                 return {"PASS_THROUGH"}
             session["drag"] = ""
-            context.window.cursor_set("CROSSHAIR")
+            session.pop("bar_offset", None)
             context.area.tag_redraw()
             return {"RUNNING_MODAL"}
 
         if event.type in {"RIGHTMOUSE", "ESC"} and event.value == "PRESS":
             if not inside and not dragging:
                 return {"PASS_THROUGH"}
+            if dragging:
+                # 拖拽中按 Esc / 右键 = 松手，不收 HUD —— 否则标记卡在拖拽状态，
+                # 或者整块 HUD 在一次误按里直接消失（参考实现同款语义）
+                session["drag"] = ""
+                session.pop("bar_offset", None)
+                context.area.tag_redraw()
+                return {"RUNNING_MODAL"}
             self._finish(context)
             return {"CANCELLED"}
 
@@ -349,15 +383,19 @@ class IMAGINARYBASE_OT_hud(bpy.types.Operator):
         ident = spot["id"] if spot else ""
         if ident != session.get("hover"):
             session["hover"] = ident
+            self._set_cursor(context, _cursor_for(spot))
             context.area.tag_redraw()
 
     # --- 动作 -------------------------------------------------------------
 
-    def _finish(self, context) -> None:
+    def _set_cursor(self, context, cursor: str) -> None:
         try:
-            context.window.cursor_set("DEFAULT")
-        except AttributeError:
+            context.window.cursor_set(cursor)
+        except (AttributeError, TypeError):
             pass
+
+    def _finish(self, context) -> None:
+        self._set_cursor(context, _CURSOR_DEFAULT)
         hud.end(context)
 
     def _zoom(self, session, layout, factor: float) -> None:
@@ -365,13 +403,16 @@ class IMAGINARYBASE_OT_hud(bpy.types.Operator):
         session["zoom"] = max(ZOOM_MIN, min(ZOOM_MAX, zoom * factor))
 
     def _drag(self, settings, session, layout, mouse) -> None:
-        """把被拖的标记放到最近的格点上（**总是吸附**，这类图只有整数才有意义）。"""
+        """拖拽：数字 / 底数吸到最近格点；标题栏则整块搬面板（带边界夹取）。"""
+        ident = session["drag"]
+        if ident == "bar":
+            self._move_panel(session, layout, mouse)
+            return
         zoom = float(session.get("zoom") or layout.get("zoom") or 22.0)
         origin = layout.get("lattice_origin") or (0.0, 0.0)
         a, b = hud_layout.snap(
             settings.domain, mouse[0], mouse[1], origin[0], origin[1], zoom
         )
-        ident = session["drag"]
         if ident == "base":
             if (a, b) == (0, 0):
                 _notice(settings, t("The base cannot be zero"))
@@ -387,11 +428,30 @@ class IMAGINARYBASE_OT_hud(bpy.types.Operator):
         else:
             _notice(settings, "")
 
-    def _press(self, context, settings, spot) -> None:
+    def _move_panel(self, session, layout, mouse) -> None:
+        """拖标题栏搬面板；留一点边在外面，别让用户把面板整个拖出可视区。"""
+        _px, _py, panel_w, panel_h = layout["panel"]
+        area_w, area_h = session.get("size") or (800, 600)
+        offset_x, offset_y = session.get("bar_offset") or (0.0, 0.0)
+        session["origin"] = [
+            max(-panel_w + 80.0, min(mouse[0] - offset_x, area_w - 80.0)),
+            max(-panel_h + 40.0, min(mouse[1] - offset_y, area_h - 30.0)),
+        ]
+        _redraw()
+
+    def _press(self, context, settings, session, spot, mouse) -> None:
         ident = spot["id"]
         if ident == "btn:close":
             self._finish(context)
-        elif ident == "btn:fit":
+            return
+        if spot["kind"] == "bar":
+            # 拖标题栏搬面板：记下按住点相对面板原点的偏移
+            origin = session.get("origin") or (0.0, 0.0)
+            session["drag"] = "bar"
+            session["bar_offset"] = (mouse[0] - origin[0], mouse[1] - origin[1])
+            context.area.tag_redraw()
+            return
+        if ident == "btn:fit":
             hud.reset_view()  # 在两个取景档之间切换
         elif ident.startswith("btn:ring:"):
             settings.domain = ident.rsplit(":", 1)[1]
