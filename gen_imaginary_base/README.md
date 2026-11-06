@@ -7,7 +7,8 @@
 自相似的点集 —— 底数是负的、纯虚的、带 `ω` 的，形状都跟着变。
 
 移植自 TheGrayCuber 的网页项目 **imaginary_bases**（见 [来源与许可](#来源与许可)），
-插件形态、HUD 交互与代码分层沿用本仓库 `fractal_family` 的做法。
+插件形态、HUD 交互与代码分层沿用了 `fractal_family` —— 那是与工作空间目录并列的
+**独立仓库**（`C:\git\fractal_family`，自己一套 git 与商店发布流程），不是本仓库的子目录。
 
 ## 与 Fractal Family 的关系
 
@@ -141,7 +142,8 @@ gen_imaginary_base/
 * 数学与预设来自 **TheGrayCuber / imaginary_bases**（github: TheGrayCuber，
   AGPL-3.0）。`presets.py` 的 43 条分享码与其投稿者署名由该项目的 `favorites` 数组
   机械提取，字符串原样保留以便逐条核对；算法本身在 `ring.py` 里独立实现。
-* 插件形态、代码分层与 HUD 交互沿用本仓库 `fractal_family`。
+* 插件形态、代码分层与 HUD 交互沿用 `fractal_family`（并列的独立仓库 `C:\git\fractal_family`，
+  不在本仓库内）。
 * 本扩展按 GPL-3.0-or-later 发布（与本仓库其它扩展一致）。
 
 ## 实测记录（Blender 5.2.2）

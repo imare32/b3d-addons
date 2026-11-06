@@ -16,3 +16,13 @@ wheels/
 # 本地临时文件
 .ref/
 .temp/
+
+.workbuddy/
+
+# 指向仓库外项目的 junction（fractal_family 有自己一套 git 与商店发布流程）
+/fractal_family/
+
+# Blender 本地会话文件，不该进仓库
+startup.blend
+userpref.blend
+*.blend1
