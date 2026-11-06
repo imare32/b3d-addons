@@ -37,8 +37,8 @@ class IMAGINARYBASE_UL_digits(bpy.types.UIList):
     def draw_item(
         self, context, layout, data, item, icon, active_data, active_propname, index
     ):
-        # 左侧序号列定宽（就 3 个字符），其余全给实部 / 虚部两个数字框。
-        head = layout.split(factor=0.11, align=True)
+        # 左侧序号列定宽（比例即等效定宽，UIList 每行等宽），其余全给实部 / 虚部。
+        head = layout.split(factor=0.16, align=True)
         head.label(text=f"#{index:02d}")
         fields = head.row(align=True)
         fields.enabled = index != 0  # 0 号恒为零，是数系的原点，不可改

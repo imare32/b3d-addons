@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "gen_imaginary_base"
-version = "0.4.2"
+version = "0.4.3"
 name = "Gen Imaginary Base"
 tagline = "Self-affine point sets from imaginary-base numeral systems"
 maintainer = "imare32"
