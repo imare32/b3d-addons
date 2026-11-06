@@ -20,7 +20,7 @@ wheels/
 .workbuddy/
 
 # 指向仓库外项目的 junction（fractal_family 有自己一套 git 与商店发布流程）
-/fractal_family/
+/gen_fractal_family/
 
 # Blender 本地会话文件，不该进仓库
 startup.blend

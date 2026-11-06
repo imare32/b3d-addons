@@ -14,13 +14,13 @@
 
 ```text
 b3d-addons/
-├─ <ext_id>/                 # 一个子目录 = 一个扩展，目录名必须与 manifest 的 id 一致
+├─ <ext_id>/                 # 一个子目录 = 一个扩展；Blender 拿目录名当扩展键与模块名
 │  ├─ blender_manifest.toml  # 扩展清单（必填）
 │  ├─ __init__.py            # 入口，提供 register() / unregister()
 │  ├─ *.py                   # 功能模块
 │  └─ README.md              # 可选，单插件说明
 ├─ b3d/                      # 个人工具箱扩展（原独立仓库，已用 git subtree 并入，历史保留）
-├─ fractal_family → C:\git\fractal_family   # junction：指向仓库外的独立项目（见下）
+├─ gen_fractal_family → C:\git\fractal_family  # junction：指向仓库外的独立项目（见下）
 ├─ _shared/                  # 可选，多个插件共用的 Python 包（链接进 scripts/modules）
 ├─ .vscode/settings.json     # 可选，开发机配置（见 VSCode 插件开发）
 ├─ pyproject.toml            # 可选，ruff 格式化 / uv 索引配置
@@ -33,18 +33,21 @@ b3d-addons/
 > 仓库根目录下的 `README.md`、`pyproject.toml`、`_shared/` 等非扩展内容不会被识别为插件（Blender 只扫描
 > 含 `blender_manifest.toml` 的子目录和 `.zip` 包），可放心与其他文件混放。
 
-### `fractal_family` 为什么是 junction
+### `gen_fractal_family` 为什么是 junction，又为什么带 `gen_` 前缀
 
 `fractal_family`（分形曲线 + 视口 HUD，已上架 Blender 官方扩展商店）有**自己一套 git 与发布流程**，
 不适合塞进本仓库的历史里，所以它仍留在 `C:\git\fractal_family`，只在工作区里放一个 junction：
 
-- 目录名与 manifest 的 `id` 一致（都叫 `fractal_family`），所以本地开发时模块名是
-  `bl_ext.b3d_addons.fractal_family`；
+- **链接名是 `gen_fractal_family`，manifest 的 `id` 仍是 `fractal_family`。** 两者故意不一致：
+  Blender 扫描本地仓库时拿**目录名**当扩展键和模块名（实测无校验告警），所以本地模块名是
+  `bl_ext.b3d_addons.gen_fractal_family`；而目录名带 `gen_` 只是为了在本工作区里和其余
+  `gen_*` / `sim_*` 排在一起、按类别一眼可辨。**商店发布走的仍是 manifest 的 `id = fractal_family`**，
+  `extension build` 打出的包、商店条目、已有用户的安装都只认这个 id，改目录名不影响发布。
 - 商店安装的那一份属于 `blender_org` 仓库，模块名是 `bl_ext.blender_org.fractal_family`；
 - **两者不能同时启用**：同一个插件注册的算子 / 类名会撞（`register_class` 报 already registered，
   HUD 也会挂两套句柄）。开发时启用前者、把商店那份禁掉，反之亦然。
 - junction 已在 `.gitignore` 里排除，新机器 clone 后需要重建一条：
-  `New-Item -ItemType Junction -Path .\fractal_family -Target C:\git\fractal_family`
+  `New-Item -ItemType Junction -Path .\gen_fractal_family -Target C:\git\fractal_family`
 
 
 ## Shell
@@ -302,9 +305,10 @@ blender --command extension build --source-dir "C:\git\b3d-addons\<ext_id>" --ou
 分两类：**生成式**（`gen_*`，一次算好结构 / 图案，参数一改就重编）与
 **模拟**（`sim_*`，逐帧推进状态，靠时间轴播放）。前缀与类别一致，新增扩展也照此命名。
 
-> **Fractal Family 已移出本仓库。** 复整数「基因」分形曲线扩展（含视口 HUD）现在独立开发，
-> 仓库为 `C:\git\fractal_family`，2.0.0 起在 Blender 官方扩展商店发布，扩展 id 也从
-> `gen_fractal_family` 改为 `fractal_family`。本仓库不再保留自用版本。
+> **Fractal Family 不在本仓库的 git 里。** 复整数「基因」分形曲线扩展（含视口 HUD）独立开发，
+> 源码仓库为 `C:\git\fractal_family`，2.0.0 起在 Blender 官方扩展商店发布，**商店 id 是
+> `fractal_family`**（1.0 时代的自用版才叫 `gen_fractal_family`）。本仓库里只有一条
+> `gen_fractal_family` junction 让它被同一个扩展仓库发现，见上文。
 
 ### 生成式（`gen_*`）
 
@@ -346,8 +350,8 @@ blender --command extension build --source-dir "C:\git\b3d-addons\<ext_id>" --ou
 这个目录原是独立的 git 仓库（github: imare32/b3d），为了统一在本仓库发版，用 `git subtree` 并入：
 内容与历史都完整保留（`git log -- b3d/` 可查），后续在这里开发、提交。
 
-> `fractal_family` 也会通过本仓库被 Blender 发现（junction 指向 `C:\git\fractal_family`），但它是
-> 独立的 git 与商店发布流程，**不列在上表**里，也不随本仓库提交。
+> `fractal_family` 也会通过本仓库被 Blender 发现（`gen_fractal_family` junction 指向
+> `C:\git\fractal_family`），但它是独立的 git 与商店发布流程，**不列在上表**里，也不随本仓库提交。
 
 新增一个扩展的最小步骤：
 
