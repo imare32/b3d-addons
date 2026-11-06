@@ -3,7 +3,10 @@
 面向内容创作的 Blender 扩展合集。每个子目录是一个独立扩展（extension），仓库整体又注册为一个 Blender
 **本地扩展仓库**，因此插件可以逐个启用/禁用，也可以一次注册后全部可用。
 
-支持 Blender 4.2+，当前开发环境为 **Blender 5.2.2 LTS**。
+宿主版本按插件逐个声明（`blender_version_min`），不是整仓一个数：少数几个只用到 4.2 就有的
+API，多数依赖 GPv3 / 5.x 接口。当前开发环境为 **Blender 5.2.2 LTS**，另配了一个
+**Blender 4.2.23 LTS** 回归环境（`BLENDER_USER_RESOURCES = C:\git\blender\4.2`，仓库注册方式与
+5.2 完全一致），用来验证「声明 4.2 可用的插件是否真的能在 4.2 里跑」。
 
 - 插件清单见 [插件一览](#插件一览)（待补充）
 - 开发环境与调试流程见 [环境](#shell) 起各节
@@ -310,6 +313,21 @@ blender --command extension build --source-dir "C:\git\b3d-addons\<ext_id>" --ou
 > `fractal_family`**（1.0 时代的自用版才叫 `gen_fractal_family`）。本仓库里只有一条
 > `gen_fractal_family` junction 让它被同一个扩展仓库发现，见上文。
 
+### 宿主版本实测（Blender 4.2.23 LTS）
+
+各插件的 `blender_version_min` 决定它在 4.2 里能不能装。下表是 2026-11 在
+`C:\git\blender\4.2` 这个环境里逐个跑出来的结果（`build` + 三次 `step`，GP 插件跑到生成）：
+
+| 插件 | 4.2.23 实测 | 说明 |
+|---|---|---|
+| `b3d` | ✅ 可启用 | 纯工具箱，无生成动作 |
+| `gen_fractal_family` | ✅ 生成正常 | 算出 `G(1,1) Dragon Curve L4` |
+| `sim_dendrite` / `sim_flocking` / `sim_game_of_life` / `sim_jacobi` / `sim_reaction_diffusion` | ✅ build + step 正常 | 每步都产出对象 |
+| `gen_imaginary_base` | ⛔ 需要 4.3+ | 输出用 GPv3（`frame.drawing` / 点域属性），4.2 是旧版 GP，直接崩 |
+| 其余 15 个（`blender_version_min = 5.0.0`） | — | 4.2 下显示为不兼容，属预期 |
+
+> 加新插件时如果想标 4.2，就在这个环境里跑一遍再说——别照抄别的插件的 `blender_version_min`。
+
 ### 生成式（`gen_*`）
 
 | 扩展 id | 名称 | 用途 | 状态 | 依赖 / 权限 | 快捷键 |
@@ -364,8 +382,13 @@ blender --command extension build --source-dir "C:\git\b3d-addons\<ext_id>" --ou
 ## 插件开发约定
 
 - 清单必填项（`blender_manifest.toml`）：`schema_version`、`id`、`version`、`name`、`tagline`、
-  `maintainer`、`type = "add-on"`、`license`、`blender_version_min`（建议 `4.2.0`）。
-- **目录名 == manifest 的 `id`**：仓库内模块名按目录名解析，不一致会加载失败。
+  `maintainer`、`type = "add-on"`、`license`、`blender_version_min`。
+- `blender_version_min` **按实际用到的 API 定，不要一律写 4.2.0**。写低了比写高了糟：Blender 会允许
+  装上一个必然崩溃的版本，用户看到的还是无关的报错。教训来自 `gen_imaginary_base` 原本写 4.2.0，
+  但它输出走 GPv3（`frame.drawing` / 点域属性层，4.3 才有），在 4.2 里必崩，现已改为 `4.3.0`。
+  凡是碰 Grease Pencil **v3** 的插件，下限至少 `4.3.0`；用到 5.x 接口就写 `5.0.0`。
+- **目录名 == manifest 的 `id`**：默认如此，仓库内模块名按目录名解析。唯一的例外是本仓库里
+  `gen_fractal_family` 那条 junction（见上文），它故意与商店 id 不一致。
 - 需要联网、读写文件、剪贴板等能力时，在 manifest 里声明 `[permissions]` 并写明原因；用到网络时同时检查
   `bpy.app.online_access`。
 - 依赖第三方库优先随扩展自带（`wheels`）或用 [Python 环境](#python-环境) 中的 modules 目录方式；

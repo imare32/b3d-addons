@@ -9,8 +9,10 @@ type = "add-on"
 
 tags = ["Grease Pencil", "Object"]
 
-# 曲线 / GP / 属性 API 在 4.2 就有；HUD 只用 gpu / blf 的稳定接口。
-blender_version_min = "4.2.0"
+# 输出走 Grease Pencil v3（``frame.drawing`` + 点域属性层，4.3 才有）。4.2 的
+# ``bpy.data.grease_pencils`` 是旧版 GP，没有 drawing / attributes，实测直接崩，
+# 所以下限是 4.3 而不是 4.2。HUD 只用 gpu / blf 的稳定接口。
+blender_version_min = "4.3.0"
 
 license = ["SPDX:GPL-3.0-or-later"]
 

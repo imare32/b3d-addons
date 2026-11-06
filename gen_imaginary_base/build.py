@@ -43,9 +43,22 @@ _POINT = "POINT"
 
 
 def _grease_pencils():
-    """GP 数据块集合：4.3 起叫 ``grease_pencils_v3``，5.2 上就是 ``grease_pencils``。"""
+    """GP 数据块集合：4.3 / 4.4 叫 ``grease_pencils_v3``，5.0 起改回 ``grease_pencils``（此时已是 v3）。
+
+    4.2 的 ``bpy.data.grease_pencils`` 是**旧版** GP：有 layers / frames，但 frame 上
+    没有 ``drawing``，也没有点域属性层。所以这里不做「找不到 v3 就退回 grease_pencils」
+    的兜底 —— 那会一路走到 ``frame.drawing`` 才抛 AttributeError，报错完全看不出原因。
+    版本下限已经写在 manifest 里（4.3.0），这里只是让越界时给一句话说得清的错。
+    """
     collection = getattr(bpy.data, "grease_pencils_v3", None)
-    return collection if collection is not None else bpy.data.grease_pencils
+    if collection is not None:
+        return collection
+    if bpy.app.version < (4, 3, 0):
+        raise RuntimeError(
+            "Gen Imaginary Base 需要 Grease Pencil v3（Blender 4.3 及以上）；"
+            f"当前是 {bpy.app.version_string}。"
+        )
+    return bpy.data.grease_pencils
 
 
 def find_object(name: str = OBJECT_NAME):
