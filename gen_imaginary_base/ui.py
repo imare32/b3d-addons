@@ -26,10 +26,10 @@ def _box(layout, title: str, icon: str = "NONE"):
 
 
 class IMAGINARYBASE_UL_digits(bpy.types.UIList):
-    """数字集列表：每行 ``#NN  [实部] [虚部]  完整表示``。
+    """数字集列表：每行 ``#NN  [实部] [虚部]``。
 
-    a / b 就地编辑（照商店版的 gene 列表），行尾是 ``ring.format_qint`` 的完整
-    虚数表示；原先中段那列裸坐标 ``a,b`` 和列表底下那对 A/B 编辑框都省了。
+    a / b 就地编辑（照商店版的 gene 列表），数字框占满序号以外的整行；
+    0 号行禁改 —— 它是数系的原点，恒为零。
     """
 
     bl_idname = "IMAGINARYBASE_UL_digits"
@@ -37,21 +37,13 @@ class IMAGINARYBASE_UL_digits(bpy.types.UIList):
     def draw_item(
         self, context, layout, data, item, icon, active_data, active_propname, index
     ):
-        settings = _settings(context)
-        domain = settings.domain if settings is not None else "I"
-        # 两列**固定宽度**：UIList 每行等宽，split 的比例宽度就等效于定宽 —— 否则
-        # 行尾文字长短不一，中间的数字框会跟着参差不齐。左侧序号就三个字符，
-        # 窄一点；剩余部分再切成 数字框 | 完整表示，行尾右对齐。
+        # 左侧序号列定宽（就 3 个字符），其余全给实部 / 虚部两个数字框。
         head = layout.split(factor=0.11, align=True)
         head.label(text=f"#{index:02d}")
-        body = head.split(factor=0.72, align=True)
-        fields = body.row(align=True)
+        fields = head.row(align=True)
         fields.enabled = index != 0  # 0 号恒为零，是数系的原点，不可改
         fields.prop(item, "a", text="")
         fields.prop(item, "b", text="")
-        tail = body.row(align=True)
-        tail.alignment = "RIGHT"
-        tail.label(text=ring.format_qint(domain, item.a, item.b))
 
 
 class IMAGINARYBASE_PT_panel(bpy.types.Panel):
