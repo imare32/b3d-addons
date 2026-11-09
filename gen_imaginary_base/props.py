@@ -19,7 +19,7 @@ import bpy
 import numpy as np
 
 from . import presets as _presets
-from . import ring
+from . import ring, steps
 from .i18n import t, tfmt
 
 __all__ = [
@@ -38,6 +38,9 @@ BUDGET_DEFAULT = 8_000
 #: 所以默认值取 0.42 —— 相邻格点上的点刚好挨在一起连成面，形状才读得出来；
 #: 调小它就会退化成一层散点。
 RADIUS_DEFAULT = 0.42
+#: 实心格的默认缝隙（每边内缩的比例）。0.06 与视口预览一直用的 0.94 边长一致，
+#: 于是"预览里看到的格子"和"生成出来的格子"完全重合。
+CELL_GAP_DEFAULT = 0.06
 
 #: 最近一次算好的点集：``key -> ring.point_set(...)`` 的结果。
 _POINT_CACHE: dict = {}
@@ -230,6 +233,44 @@ class ImaginaryBaseSettings(bpy.types.PropertyGroup):
 
     # --- 输出 -------------------------------------------------------------
 
+    output_mode: bpy.props.EnumProperty(
+        name="Output Mode",
+        description="What one integer becomes in the grease pencil object",
+        items=[
+            (
+                "DOTS",
+                "Dots",
+                (
+                    "One single-point stroke per integer; its size is Dot Radius. "
+                    "Cheapest to draw and the easiest to drive with geometry nodes"
+                ),
+            ),
+            (
+                "CELLS",
+                "Filled Cells",
+                (
+                    "One filled cell per integer — a square on the Gaussian lattice, a "
+                    "regular hexagon on the Eisenstein lattice — with no stroke. Cells "
+                    "tile the plane, so the picture reads as solid colour"
+                ),
+            ),
+        ],
+        default="DOTS",
+        update=_mark_dirty,
+    )
+
+    cell_gap: bpy.props.FloatProperty(
+        name="Cell Gap",
+        description="How much each cell shrinks inwards (share of one lattice step); "
+        "0 makes neighbouring cells share an edge",
+        default=CELL_GAP_DEFAULT,
+        min=0.0,
+        max=0.6,
+        step=1,
+        precision=3,
+        update=_mark_dirty,
+    )
+
     point_budget: bpy.props.IntProperty(
         name="Point Budget",
         description="Upper bound on the number of points; each point is one grease pencil "
@@ -251,8 +292,31 @@ class ImaginaryBaseSettings(bpy.types.PropertyGroup):
         update=_mark_dirty,
     )
 
-    # --- 预览 -------------------------------------------------------------
+    # --- 动画 -------------------------------------------------------------
 
+    anim_frames: bpy.props.IntProperty(
+        name="Frames per Phase",
+        description=(
+            "How many frames one phase takes — a phase is either slap-a-zero (multiply "
+            "the whole picture by the base) or give-birth (spread every point into one "
+            "copy per digit)"
+        ),
+        default=steps.FRAMES_DEFAULT,
+        min=1,
+        max=48,
+        update=_mark_dirty,
+    )
+
+    anim_hold: bpy.props.IntProperty(
+        name="Hold per Level",
+        description="How many frames to hold the picture once a level is complete",
+        default=steps.HOLD_DEFAULT,
+        min=0,
+        max=24,
+        update=_mark_dirty,
+    )
+
+    # --- 预览 -------------------------------------------------------------
     show_preview: bpy.props.BoolProperty(
         name="Viewport Preview",
         description="Draw the point set directly in the viewport while you edit, without "

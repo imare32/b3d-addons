@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import bpy
 
-from . import hud, ring
+from . import hud, ring, steps
 from .i18n import t, tfmt
 
 __all__ = ["classes"]
@@ -51,7 +51,7 @@ class IMAGINARYBASE_PT_panel(bpy.types.Panel):
     bl_label = "Fractal Base"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Fractal Base"
+    bl_category = "Fractal"
 
     def draw(self, context):
         layout = self.layout
@@ -65,6 +65,7 @@ class IMAGINARYBASE_PT_panel(bpy.types.Panel):
         self._digits(layout, settings)
         self._places(layout, settings)
         self._output(layout, settings)
+        self._animation(layout, settings)
         self._status(layout, settings)
 
     # --- HUD --------------------------------------------------------------
@@ -172,9 +173,74 @@ class IMAGINARYBASE_PT_panel(bpy.types.Panel):
 
         box.operator("imaginarybase.fit", text=t("Frame in Viewport"), icon="VIEWZOOM")
 
+        # 输出形态：圆点 / 实心格。实心格的形状由域决定（方格 / 六边形），
+        # 所以只写形状名字，不写死"正方形"。`text` 留空会把 expand 的按钮标签一起
+        # 抹掉（实测：整行变成一个没有字的蓝条），所以这里传标题。
+        box.prop(settings, "output_mode", text=t("Output Mode"), expand=True)
+
         col = box.column(align=True)
         col.prop(settings, "point_budget", text=t("Point Budget"))
-        col.prop(settings, "dot_radius", text=t("Dot Radius"), slider=True)
+        if settings.output_mode == "CELLS":
+            col.prop(settings, "cell_gap", text=t("Cell Gap"), slider=True)
+        else:
+            col.prop(settings, "dot_radius", text=t("Dot Radius"), slider=True)
+
+        box.label(
+            text=t(
+                "Square on Z[i] · hexagon on Z[ω]"
+                if settings.output_mode == "CELLS"
+                else "One dot per integer"
+            ),
+            icon="MESH_GRID",
+        )
+
+    # --- 动画 -------------------------------------------------------------
+
+    def _animation(self, layout, settings):
+        """「贴零 → 生育」的逐帧构造过程，写进另一个 GP 对象。"""
+        box = _box(layout, t("Animation"), "ANIM")
+
+        row = box.row(align=True)
+        row.scale_y = 1.3
+        row.operator("imaginarybase.animate", text=t("Generate Animation"), icon="PLAY")
+        row.operator("imaginarybase.remove", text="", icon="TRASH").target = "ANIMATION"
+        row.operator("imaginarybase.example_twindragon", text="", icon="PRESET")
+
+        col = box.column(align=True)
+        col.prop(settings, "anim_frames", text=t("Frames per Phase"))
+        col.prop(settings, "anim_hold", text=t("Hold per Level"))
+
+        # 预计帧数/级数：与算子用的是同一个 make_plan，所以这里显示的就是按下去的结果
+        plan = steps.make_plan(
+            settings.domain,
+            (settings.base_a, settings.base_b),
+            settings.digit_list(),
+            int(settings.places),
+            per_phase=int(settings.anim_frames),
+            hold=int(settings.anim_hold),
+        )
+        if plan["frames"]:
+            box.label(
+                text=tfmt(
+                    "{frames} frames · {levels} levels",
+                    frames=plan["frames"],
+                    levels=plan["levels"],
+                ),
+                icon="FORWARD",
+            )
+        if plan["capped"]:
+            box.label(
+                text=tfmt(
+                    "stroke budget: {levels} of {places} levels",
+                    levels=plan["levels"],
+                    places=plan["places"],
+                ),
+                icon="INFO",
+            )
+        box.label(
+            text=t("Slap a zero (× base), then give birth (+ digits)"),
+            icon="INFO",
+        )
 
     # --- 状态 -------------------------------------------------------------
 
@@ -184,7 +250,9 @@ class IMAGINARYBASE_PT_panel(bpy.types.Panel):
         row = box.row()
         row.label(
             text=tfmt(
-                "{count} points · {places} places",
+                "{count} cells · {places} places"
+                if settings.output_mode == "CELLS"
+                else "{count} points · {places} places",
                 count=data["count"],
                 places=data["places"],
             ),

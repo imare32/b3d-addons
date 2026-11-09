@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import bpy
 
-from . import build, hud, hud_layout, ring
+from . import anim, build, hud, hud_layout, ring
 from .i18n import t, tfmt
 
 __all__ = ["classes"]
@@ -84,41 +84,78 @@ class IMAGINARYBASE_OT_generate(bpy.types.Operator):
             self.report({"WARNING"}, t("Nothing to draw"))
             return {"CANCELLED"}
         check = summary["check"]
+        # 摘要里的"点数 / 格数"由 build 按输出形态选好措辞，这里只补上数系判定
+        message = summary["message"]
         if check["ok"]:
             _notice(settings, "")
-            self.report(
-                {"INFO"},
-                tfmt(
-                    "Places {places} · {count} points · canonical numeral system",
-                    places=summary["places"],
-                    count=summary["count"],
-                ),
-            )
+            message = f"{message} · {t('canonical numeral system')}"
         else:
             _notice(settings, check["reason"])
-            self.report(
-                {"INFO"},
-                tfmt(
-                    "Places {places} · {count} points · {reason}",
-                    places=summary["places"],
-                    count=summary["count"],
-                    reason=check["reason"],
-                ),
-            )
+            message = f"{message} · {check['reason']}"
+        self.report({"INFO"}, message)
         _redraw()
         return {"FINISHED"}
 
 
 class IMAGINARYBASE_OT_remove(bpy.types.Operator):
-    """Delete the generated object"""
+    """Delete the generated object (static point set or the step animation)"""
 
     bl_idname = "imaginarybase.remove"
     bl_label = "Delete Object"
     bl_options = {"REGISTER", "UNDO"}
 
+    target: bpy.props.EnumProperty(
+        name="Target",
+        items=[
+            ("STATIC", "Static", "The point-set object"),
+            ("ANIMATION", "Animation", "The slap-a-zero / give-birth animation object"),
+        ],
+        default="STATIC",
+    )
+
     def execute(self, context):
-        removed = build.remove_object()
+        if self.target == "ANIMATION":
+            removed = anim.remove_object()
+        else:
+            removed = build.remove_object()
         self.report({"INFO"}, t("Deleted") if removed else t("No object to delete"))
+        return {"FINISHED"}
+
+
+class IMAGINARYBASE_OT_animate(bpy.types.Operator):
+    """Write the 'slap a zero · give birth' construction as a grease pencil animation"""
+
+    bl_idname = "imaginarybase.animate"
+    bl_label = "Generate Animation"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        settings = _settings(context)
+        return settings is not None and len(settings.digits) >= 2
+
+    def execute(self, context):
+        settings = _settings(context)
+        summary = anim.build_animation(settings)
+        if not summary["frames"]:
+            _notice(settings, t("Nothing to draw: check the base and the digits"))
+            self.report({"WARNING"}, t("Nothing to animate"))
+            return {"CANCELLED"}
+        # 跳到第一帧，否则用户点了按钮还停在原来的帧号上、看到的是一片空白
+        context.scene.frame_set(1)
+        message = summary["message"]
+        if summary["plan"]["capped"]:
+            message = "{} · {}".format(
+                message,
+                tfmt(
+                    "stroke budget: {levels} of {places} levels",
+                    levels=summary["levels"],
+                    places=summary["plan"]["places"],
+                ),
+            )
+        _notice(settings, "")
+        self.report({"INFO"}, message)
+        _redraw()
         return {"FINISHED"}
 
 
@@ -246,6 +283,31 @@ class IMAGINARYBASE_OT_reset_digits(bpy.types.Operator):
         settings = _settings(context)
         settings.set_base(0, 2)
         settings.apply_digits([(0, 0), (1, 0), (0, 1), (-1, 1)])
+        return {"FINISHED"}
+
+
+class IMAGINARYBASE_OT_example_twindragon(bpy.types.Operator):
+    """Load the example from the reference video: base −1+i with digits 0 and 1"""
+
+    bl_idname = "imaginarybase.example_twindragon"
+    bl_label = "Video Example"
+    bl_description = (
+        "Load base −1+i with the digits 0 and 1 — the system TheGrayCuber uses to "
+        "explain slap-a-zero / give-birth (it produces the twindragon)"
+    )
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        settings = _settings(context)
+        if settings is None:
+            return {"CANCELLED"}
+        settings.domain = "I"
+        settings.base_a, settings.base_b = -1, 1
+        settings.apply_digits([(0, 0), (1, 0)])
+        settings.places = 6
+        # 动画是纯色（不做 AGGREGATE 的淡出），静态输出切到「最高位」就与它一模一样
+        settings.colour_mode = "LEAD"
+        _redraw()
         return {"FINISHED"}
 
 
@@ -468,11 +530,13 @@ class IMAGINARYBASE_OT_hud(bpy.types.Operator):
 
 classes = (
     IMAGINARYBASE_OT_generate,
+    IMAGINARYBASE_OT_animate,
     IMAGINARYBASE_OT_remove,
     IMAGINARYBASE_OT_fit,
     IMAGINARYBASE_OT_digit_add,
     IMAGINARYBASE_OT_digit_remove,
     IMAGINARYBASE_OT_place_step,
     IMAGINARYBASE_OT_reset_digits,
+    IMAGINARYBASE_OT_example_twindragon,
     IMAGINARYBASE_OT_hud,
 )

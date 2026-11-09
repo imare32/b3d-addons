@@ -19,7 +19,6 @@
 
 from __future__ import annotations
 
-import math
 import traceback
 
 import bpy
@@ -27,7 +26,7 @@ import gpu
 import numpy as np
 from gpu_extras.batch import batch_for_shader
 
-from . import palette
+from . import palette, ring
 from .hud_layout import frame_polygon
 
 __all__ = ["install", "remove", "tag_redraw"]
@@ -48,30 +47,18 @@ _CACHE_LIMIT = 4
 _REPORTED = False
 
 
-def cell_triangles(domain: str) -> np.ndarray:
-    """单位格拆成三角形，返回角点偏移表 ``(6, 2)`` 或 ``(18, 2)``。
+def cell_triangles(domain: str, gap: float = 0.0) -> np.ndarray:
+    """单位胞腔拆成三角形，返回角点偏移表 ``(6, 2)`` 或 ``(12, 2)``。
 
-    格距是 1：方形取边长 0.94（2 个三角形 = 6 个角点），六边形取外接半径
-    ``0.94/√3``（6 个三角形 = 18 个角点）—— 都留一点点缝，相邻格之间才看得出界线。
-    六边形尖顶朝上（顶点在 90°），与三角格的朝向一致。
+    胞腔形状直接取 :func:`ring.cell_polygon` —— 就是「实心格」输出里那一片瓦片的形状，
+    所以预览里看到的格子与生成出来的完全重合（缝隙也一致）。方形是 2 个三角形、
+    六边形是 4 个，扇形从第一个角点展开，不额外引入中心点。
     """
-    if domain != "W":
-        half = 0.47
-        corners = [(-half, -half), (half, -half), (half, half), (-half, half)]
-        triangles = [(0, 1, 2), (0, 2, 3)]
-    else:
-        radius = 0.94 / math.sqrt(3.0)
-        corners = [
-            (
-                radius * math.cos(math.pi / 6.0 + index * math.pi / 3.0),
-                radius * math.sin(math.pi / 6.0 + index * math.pi / 3.0),
-            )
-            for index in range(6)
-        ]
-        corners.append((0.0, 0.0))  # 6 号是中心，扇形三角都用它
-        triangles = [(6, index, (index + 1) % 6) for index in range(6)]
-    table = [corners[index] for triangle in triangles for index in triangle]
-    return np.array(table, dtype=np.float32)
+    polygon = ring.cell_polygon(domain, gap)
+    corners = []
+    for index in range(1, len(polygon) - 1):
+        corners.extend((polygon[0], polygon[index], polygon[index + 1]))
+    return np.array(corners, dtype=np.float32)
 
 
 def _settings(context=None):
@@ -86,12 +73,12 @@ def _build_batches(settings):
     xy = data["xy"]
     if len(xy) == 0:
         return []
-    table = cell_triangles(settings.domain)
+    table = cell_triangles(settings.domain, float(settings.cell_gap))
     shader = gpu.shader.from_builtin("UNIFORM_COLOR")
     batches = []
     for slot in np.unique(data["slot"]):
         mask = data["slot"] == slot
-        # (n, 18, 2)：每个点展开成 18 个角点，z 恒为 0（点集本来就在 XY 平面上）
+        # (n, 12, 2)：每个点展开成一格的角点，z 恒为 0（点集本来就在 XY 平面上）
         cell = xy[mask][:, None, :] + table[None, :, :]
         verts = np.zeros((cell.shape[0], cell.shape[1], 3), dtype=np.float32)
         verts[:, :, :2] = cell
@@ -126,7 +113,11 @@ def _frame_batch(settings, data, shader):
 
 
 def _batches_for(settings):
-    key = (settings.point_key(), settings.domain)
+    key = (
+        settings.point_key(),
+        settings.domain,
+        round(float(settings.cell_gap), 4),
+    )
     cached = _BATCHES.get(key)
     if cached is not None:
         return cached

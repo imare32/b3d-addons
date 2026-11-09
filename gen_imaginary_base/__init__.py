@@ -6,9 +6,10 @@
 
 分层（数学层永不 import ``bpy``）::
 
-    ring        -- 环算术（Z[i] / Z[ω]）、进制展开、完全剩余系判定、点集
+    ring        -- 环算术（Z[i] / Z[ω]）、进制展开、完全剩余系判定、点集、胞腔
     presets     -- 从参考项目移植的 43 套社区数系
     palette     -- 色板与 sRGB → 线性
+    steps       -- 「贴零 → 生育」的动画时间轴（纯 numpy）
 
 Blender 层（只在 :func:`register` 里导入）::
 
@@ -16,7 +17,8 @@ Blender 层（只在 :func:`register` 里导入）::
     preview     -- 视口预览，``POST_VIEW`` 立即模式（不建数据块）
     hud         -- 视口 HUD，``POST_PIXEL`` 面板
     hud_layout  -- HUD 的图元与命中区（纯函数）
-    build       -- 写 Grease Pencil（一个整数一条单顶点笔划）
+    build       -- 写 Grease Pencil（圆点 / 实心格两种形态）
+    anim        -- 把 :mod:`steps` 的时间轴写成逐帧的 GP 动画
     ops         -- 生成 / 取景 / 加删数字 / **HUD 模态**
     ui          -- ``View3D > Sidebar > Fractal Base``
 """
@@ -58,11 +60,77 @@ translation_dict = {
         ("*", "Place"): "位号",
         ("*", "Point Budget"): "点数预算",
         ("*", "Dot Radius"): "点半径",
+        ("*", "Output Mode"): "输出形态",
+        ("*", "Dots"): "圆点",
+        ("*", "Filled Cells"): "实心格",
+        ("*", "Cell Gap"): "格缝",
+        ("*", "One dot per integer"): "一个整数一个圆点",
+        ("*", "Square on Z[i] · hexagon on Z[ω]"): "Z[i] 方格 · Z[ω] 六边形",
+        (
+            "*",
+            "What one integer becomes in the grease pencil object",
+        ): "一个整数在 GP 对象里变成什么",
+        (
+            "*",
+            "One single-point stroke per integer; its size is Dot Radius. "
+            "Cheapest to draw and the easiest to drive with geometry nodes",
+        ): "一个整数一条单顶点笔划，大小由点半径决定。最省，也最容易被几何节点驱动",
+        (
+            "*",
+            "One filled cell per integer — a square on the Gaussian lattice, a "
+            "regular hexagon on the Eisenstein lattice — with no stroke. Cells "
+            "tile the plane, so the picture reads as solid colour",
+        ): (
+            "一个整数一个实心格 —— 高斯点阵上是正方形、艾森斯坦点阵上是正六边形 —— "
+            "不带描边。格子能铺满平面，远看就是一片实色"
+        ),
+        (
+            "*",
+            "How much each cell shrinks inwards (share of one lattice step); "
+            "0 makes neighbouring cells share an edge",
+        ): "每格向内缩进多少（占一个格距的比例）；0 表示相邻格共边",
         ("*", "Generate"): "生成",
         ("*", "Delete Object"): "删除对象",
         ("*", "Frame in Viewport"): "视口取景",
         ("*", "Viewport Preview"): "视口预览",
         ("*", "HUD"): "HUD",
+        # --- 动画 ---------------------------------------------------------
+        ("*", "Animation"): "动画",
+        ("*", "Generate Animation"): "生成动画",
+        ("*", "Video Example"): "视频示例",
+        ("*", "Frames per Phase"): "每相位帧数",
+        ("*", "Hold per Level"): "每级停留",
+        ("*", "Nothing to animate"): "没有可做动画的内容",
+        ("*", "{frames} frames · {levels} levels"): "{frames} 帧 · {levels} 级",
+        (
+            "*",
+            "stroke budget: {levels} of {places} levels",
+        ): "笔划预算：{places} 级只做 {levels} 级",
+        (
+            "*",
+            "Slap a zero (× base), then give birth (+ digits)",
+        ): "贴零（×底数），再生育（+数字）",
+        (
+            "*",
+            "How many frames one phase takes — a phase is either slap-a-zero (multiply "
+            "the whole picture by the base) or give-birth (spread every point into one "
+            "copy per digit)",
+        ): (
+            "一个相位占多少帧。相位只有两种：贴零（整片乘底数，转着长大）"
+            "与生育（每个点按每个数字摊成一份拷贝）"
+        ),
+        (
+            "*",
+            "How many frames to hold the picture once a level is complete",
+        ): "每一级做完后停多少帧",
+        (
+            "*",
+            "Load base −1+i with the digits 0 and 1 — the system TheGrayCuber uses to "
+            "explain slap-a-zero / give-birth (it produces the twindragon)",
+        ): (
+            "载入参考视频里的例子：底数 −1+i、数字 0 与 1"
+            "（讲「贴零 / 生育」用的就是它，画出来是 twindragon）"
+        ),
         ("*", "Canonical numeral system"): "有效数系（每个整数唯一表示）",
         ("*", "Settings not available"): "设置不可用",
         ("*", "Add Digit"): "加数字",
@@ -90,6 +158,10 @@ translation_dict = {
         ("*", "Deleted"): "已删除",
         ("*", "No object to delete"): "没有可删除的对象",
         ("*", "Places {places} · {count} points"): "位数 {places} · {count} 点",
+        ("*", "Places {places} · {count} cells"): "位数 {places} · {count} 格",
+        ("*", "{count} points · {places} places"): "{count} 点 · {places} 位",
+        ("*", "{count} cells · {places} places"): "{count} 格 · {places} 位",
+        ("*", "canonical numeral system"): "有效数系",
         ("*", "The point budget allows {places} places"): "点数预算只够 {places} 位",
         # --- HUD ----------------------------------------------------------
         ("*", "Imaginary Base"): "虚数进制",

@@ -30,6 +30,7 @@ __all__ = [
     "SQRT_3_OVER_2",
     "MAX_PLACES",
     "canonical_check",
+    "cell_polygon",
     "coords_of",
     "domain_label",
     "format_qint",
@@ -151,6 +152,39 @@ def lattice_basis(domain: str) -> np.ndarray:
     if domain == "W":
         return np.array([[1.0, -0.5], [0.0, SQRT_3_OVER_2]])
     return np.eye(2)
+
+
+def cell_polygon(domain: str, gap: float = 0.0) -> np.ndarray:
+    """格点周围的**胞腔**多边形（格距为 1，逆时针，``(n, 2)``）。
+
+    这两种形状就是各自点阵的 Voronoi 胞腔，所以按格点平移铺开来能严密地填满平面：
+
+    * ``I``（高斯整数，方点阵）→ 边长 1 的**正方形**；
+    * ``W``（艾森斯坦整数，三角点阵）→ 外接半径 ``1/√3`` 的**正六边形**，尖顶朝上
+      （顶点在 30° + k·60°，与点阵的六个邻居方向对齐；平边到中心恰好 0.5）。
+
+    ``gap`` 是每边**向内缩进的比例**（``0`` = 胞腔共边、完全铺满）。缩一点，相邻格之间
+    才看得出界线 —— 视口预览与「实心格」输出都走这里，两者形状才会完全重合。
+
+    :return: ``(4, 2)`` 或 ``(6, 2)`` 的角点偏移，单位是格距。
+    """
+    scale = max(0.05, 1.0 - min(max(float(gap), 0.0), 0.95))
+    if domain != "W":
+        half = 0.5 * scale
+        return np.array(
+            [(-half, -half), (half, -half), (half, half), (-half, half)], dtype=np.float32
+        )
+    radius = scale / math.sqrt(3.0)
+    return np.array(
+        [
+            (
+                radius * math.cos(math.pi / 6.0 + index * math.pi / 3.0),
+                radius * math.sin(math.pi / 6.0 + index * math.pi / 3.0),
+            )
+            for index in range(6)
+        ],
+        dtype=np.float32,
+    )
 
 
 def coords_of(domain: str, a, b):
