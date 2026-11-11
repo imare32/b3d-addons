@@ -17,6 +17,9 @@ wheels/
 .ref/
 .temp/
 
+# 调研底稿，不进仓库
+.lab/deep-research-report.md
+
 .workbuddy/
 
 # 指向仓库外项目的 junction（fractal_family 有自己一套 git 与商店发布流程）
