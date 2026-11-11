@@ -573,9 +573,10 @@ Blender 扩展必须自包含，所以每个插件目录下都有一份 `palette
 
 视口着色检查（`viewport.py`）也一样：`gen_*` 与 `sim_*` 共 **19 份**逐字副本，同样整批同步。
 
-技术细节见两份报告：生成式（GP v3 属性表与实测行为、各插件算法、交织专题）见
+技术细节见三份报告：生成式（GP v3 属性表与实测行为、各插件算法、交织专题）见
 [`GEN_TECH.md`](GEN_TECH.md)；模拟（`STATE` 契约、逐帧链路、双后端与数值、性能与调试清单）见
-[`SIM_TECH.md`](SIM_TECH.md)。
+[`SIM_TECH.md`](SIM_TECH.md)；分形（三个分形生成器的数学边界、25 个经典分形的可达性矩阵、
+命名规则）见 [`FRACTAL_TECH.md`](FRACTAL_TECH.md)。
 
 ## 快捷键速查
 
