@@ -233,6 +233,16 @@ A(l,w)        gt(l,0.1)    F(l)[&(45)B(mul(l,0.6),mul(w,0.707))]/(137.5)A(mul(l,
 **什么时候不重算**：还没有生成对象（不凭空长对象）/ 自动更新关着 / 文件加载期间 /
 回读参数与套用预设期间（`props.suspend_auto_update()`）。
 
+**加载期那个开关必须自己会恢复**（真踩过的坑）：`load_pre` / `load_post` 两个处理器都标了
+`@bpy.app.handlers.persistent` —— Blender 打开 / 新建文件时会把**没标**的 handler 静默摘掉
+（`persistent` 的文档原话：not to be removed when loading new files）。少了它，`load_pre`
+只跑过一次、`load_post` 再也不来，`_loading` 永久停在 `True`：`request()` 一进门就 return，
+自动更新一声不响地死掉 —— 面板一直写「参数改过，正在自动更新…」，对象不动、也不报错
+（当时查出来是 `_loading == True` 且 handler 列表里已经空了）。除 `persistent` 之外，
+`load_pre` 里还排了一次 0 间隔的**保险丝 timer**：文件加载是同步的，timer 只会在主循环空下来
+之后跑，一定排在加载结束之后，所以哪怕 `load_post` 还是缺席，开关也会被摘掉。面板也改成
+只在**真有一次重算排着队**时才说「正在自动更新」（`live.pending()`）。
+
 **已知取舍**：自动重算走 timer，**不进撤销栈** —— Ctrl+Z 撤的是面板参数，几何要再点一次「生成」
 才追得上（同 `gen_torus_knot`）。
 

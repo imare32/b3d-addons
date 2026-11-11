@@ -15,6 +15,13 @@
 * 自动更新关着：只标「待生成」，让人工点按钮；
 * 文件加载期间（``load_pre`` / ``load_post``）：加载也会触发参数的 update 回调；
 * 回读参数 / 套用预设时（:func:`gen_lsystem.props.suspend_auto_update`）。
+
+**两个 load 处理器必须标 ``@bpy.app.handlers.persistent``** —— Blender 打开 / 新建 /
+重读文件时会把这个标记以外的 handler **整个摘掉**（``persistent`` 的文档原话：
+not to be removed when loading new files），摘掉是静默的、不报错。少了它就会出现
+「``load_pre`` 只跑过一次、``load_post`` 再也不来」的局面：``_loading`` 永久停在
+``True``，``request()`` 一进门就 return，自动更新从此一声不响地死掉 —— 面板一直写
+「参数改过，正在自动更新…」，对象不动，也不报错。这一条是本扩展真踩过的坑。
 """
 
 from __future__ import annotations
@@ -25,7 +32,18 @@ import bpy
 
 from . import gp
 
-__all__ = ["DEBOUNCE", "cancel", "cancel_timer", "install", "remove", "request", "run"]
+__all__ = [
+    "DEBOUNCE",
+    "cancel",
+    "cancel_reset",
+    "cancel_timer",
+    "install",
+    "pending",
+    "remove",
+    "request",
+    "reset_loading",
+    "run",
+]
 
 #: 防抖：改动停下来多久之后重算（秒）。0.2 s 比 ``gen_torus_knot`` 的 0.08 s 宽一档 ——
 #: L-system 的重算可能到几十毫秒，太灵敏反而会跟拖滑块抢时间。
@@ -40,6 +58,9 @@ _loading = False
 #: 挂着的 timer 回调记在 ``bpy.app.driver_namespace`` 里：热重载换了模块之后，
 #: 靠它还能把上一次挂的那次 timer 摘掉（不然会重算两遍）。
 _TIMER_KEY = "gen_lsystem_live_timer"
+
+#: 同上，「加载结束」保险丝的键（见 :func:`_on_load_pre`）。
+_RESET_KEY = "gen_lsystem_live_load_reset"
 
 
 def request(settings) -> None:
@@ -67,6 +88,18 @@ def cancel() -> None:
     global _scene
     _scene = None
     cancel_timer()
+
+
+def pending() -> bool:
+    """有没有一次重算正排着队（面板据此说真话，见 :func:`gen_lsystem.ui._status`）。
+
+    只读查询、没有副作用：``dirty`` 为真但这里为假，说明「改过了、但没人去算」——
+    面板不该再写「正在自动更新」。这正是 ``_loading`` 卡死那次留下的症状。
+    """
+    try:
+        return _scene is not None and bpy.app.timers.is_registered(_tick)
+    except (TypeError, ValueError):  # pragma: no cover - 极早期 / 卸载中
+        return False
 
 
 def cancel_timer() -> None:
@@ -154,17 +187,49 @@ def _ours(handler) -> bool:
     )
 
 
-def _on_load_pre(*_args) -> None:
-    """文件开始加载：加载期间不重算（加载也会触发参数的 update 回调）。"""
-    global _loading
-    _loading = True
-    cancel_timer()
-
-
-def _on_load_post(*_args) -> None:
-    """文件加载完：恢复自动重算。"""
+def reset_loading() -> None:
+    """文件加载结束：恢复自动重算。``load_post`` 与保险丝 timer 都走这里。"""
     global _loading
     _loading = False
+
+
+def _clear_loading():
+    """保险丝 timer：转给**当前**模块的实现（热重载后旧回调也不跑旧代码）。
+
+    没有返回值（= ``None``）就是「一次性 timer，跑完摘掉」。
+    """
+    from . import live  # noqa: PLW0406
+
+    live.reset_loading()
+    return None
+
+
+#: 必须 ``persistent``：Blender 打开 / 新建文件时会摘掉没标的 handler，
+#: 摘完 ``load_post`` 就再也不会来，``_loading`` 会永久停在 ``True``。
+@bpy.app.handlers.persistent
+def _on_load_pre(*_args) -> None:
+    """文件开始加载：加载期间不重算（加载也会触发参数的 update 回调）。
+
+    除了把开关立起来，还顺手排一次**保险丝** timer：文件加载是同步的（``load_pre``
+    → 读文件 → ``load_post`` 全在同一次调用里），timer 只在主循环空下来之后才跑，
+    所以它一定排在加载结束之后。万一 ``load_post`` 这次还是没来（别的扩展把
+    handler 清扫掉了、或者换了加载管线），这一拍也会把 ``_loading`` 摘掉 ——
+    这个开关只能靠自己恢复，卡住就等于自动更新永久关死。
+    """
+    global _loading
+    _loading = True
+    cancel()  # 丢掉待跑的重算，以及它记着的旧场景指针
+    cancel_reset()
+    bpy.app.timers.register(_clear_loading, first_interval=0.0)
+    bpy.app.driver_namespace[_RESET_KEY] = _clear_loading
+
+
+#: 同上，必须 ``persistent``。
+@bpy.app.handlers.persistent
+def _on_load_post(*_args) -> None:
+    """文件加载完：恢复自动重算（保险丝 timer 到点也会走这里，两条路都通）。"""
+    cancel_reset()
+    reset_loading()
 
 
 def install() -> None:
@@ -174,9 +239,22 @@ def install() -> None:
     bpy.app.handlers.load_post.append(_on_load_post)
 
 
+def cancel_reset() -> None:
+    """摘掉「加载结束」保险丝（加载已收尾 / 卸载插件时用）。"""
+    for func in (bpy.app.driver_namespace.pop(_RESET_KEY, None), _clear_loading):
+        if func is None:
+            continue
+        try:
+            if bpy.app.timers.is_registered(func):
+                bpy.app.timers.unregister(func)
+        except (TypeError, RuntimeError, ValueError):
+            pass
+
+
 def remove() -> None:
     """摘掉处理器与待跑的 timer（``unregister`` 必须调，否则重载会残留）。"""
     for handlers in (bpy.app.handlers.load_pre, bpy.app.handlers.load_post):
         for handler in [item for item in handlers if _ours(item)]:
             handlers.remove(handler)
+    cancel_reset()
     cancel()

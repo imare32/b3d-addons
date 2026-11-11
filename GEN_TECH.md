@@ -770,6 +770,23 @@ for handler in bpy.app.handlers.depsgraph_update_post:
 
 `load_pre` / `load_post` 期间不重编（否则打开文件时会反复重算），`is_dirty` 状态由扩展自己记。
 
+**这两个 handler 必须标 `@bpy.app.handlers.persistent`。** Blender 打开 / 新建 / 重读文件时会把
+**没标**的 handler 静默摘掉（`persistent` 的文档原话：not to be removed when loading new files），
+摘掉不报错、也不进日志。于是「`load_pre` 跑过一次、`load_post` 再也不来」：
+「加载中」这类布尔开关永久停在 `True`，所有「加载期间先别动」的早退逻辑从此全部命中，
+实时更新一声不响地死掉 —— 面板还在写「正在自动更新…」，用户看到的只是「改了没反应」。
+
+`gen_lsystem` 就这么中过招。判定方法（在 Blender 里一行就能验）：
+
+```python
+import bpy
+[f"{h.__module__}.{h.__name__}" for h in bpy.app.handlers.load_post]   # 自己的还在不在
+"_bpy_persistent" in bpy.app.handlers.load_post[0].__dict__             # 在的都有这个标记
+```
+
+凡是布尔开关，都要给「卡住」留一条自己恢复的路：`gen_lsystem` 在 `load_pre` 里顺带排一次
+0 间隔 timer（加载是同步的，它必然排在加载之后）当保险丝，`load_post` 缺席也能把开关摘掉。
+
 ## 30. 实测性能汇总
 
 一台机器、Blender 5.2.2、默认分辨率/画布。**几何与写入分开量**：

@@ -119,12 +119,18 @@ def _ours(handler) -> bool:
     ) in {"on_update", "_on_load_pre", "_on_load_post"}
 
 
+#: 必须 ``persistent``：Blender 打开 / 新建文件时会摘掉没标的 handler，
+#: 摘完 ``load_post`` 就再也不会来，``_loading`` 会永久停在 ``True``
+#: （那时面板还在写「正在自动更新…」，用户只看到「改了没反应」）。
+@bpy.app.handlers.persistent
 def _on_load_pre(*_args):
     """文件开始加载：加载期间不重编。"""
     global _loading
     _loading = True
 
 
+#: 同上，必须 ``persistent``。
+@bpy.app.handlers.persistent
 def _on_load_post(*_args):
     """文件加载完：恢复实时更新。"""
     global _loading
