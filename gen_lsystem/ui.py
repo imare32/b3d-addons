@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import bpy
 
-from . import gp, presets
+from . import gp, live, presets
 from .ops import (
     GENLS_OT_apply_preset,
     GENLS_OT_delete,
@@ -52,8 +52,12 @@ def _status(layout, settings, obj) -> None:
         box.label(text=settings.error, icon="ERROR")
     elif obj is None:
         box.label(text="还没有生成对象，点「生成」建一个", icon="INFO")
-    elif settings.dirty:
+    elif settings.dirty and live.pending():
+        # 只有真有一次重算排着队才这么说：dirty 为真却没人排队时如实提示，
+        # 免得「自动更新其实没跑」被一句「正在自动更新…」盖住
         box.label(text="参数改过，正在自动更新…", icon="TIME")
+    elif settings.dirty:
+        box.label(text="参数改过，还没重算（再动一下参数或点「生成」）", icon="INFO")
     else:
         box.label(text="已生成", icon="CHECKMARK")
 
@@ -192,6 +196,9 @@ class GENLS_PT_panel(bpy.types.Panel):
         layout.use_property_decorate = False
 
         head = layout.row(align=True)
+        # 这一行全是按钮、没有「标签 | 控件」可言：不关掉 split 的话，``prop`` 的
+        # ``toggle`` 会被排成「左标签栏 + 右按钮」，按钮左边白白空出一段。
+        head.use_property_split = False
         head.scale_y = 1.4
         head.operator(GENLS_OT_generate.bl_idname, icon="PLAY", text="生成")
         # 自动更新：几何参数一改就重算，不用再点「生成」

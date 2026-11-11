@@ -30,7 +30,14 @@ def _box(layout, label: str, icon: str = "NONE"):
 
 
 def _source(layout, settings, source) -> None:
+    """源选择器 + 三个小按钮，**占满整行**。
+
+    这一行不走 ``use_property_split`` 的「标签栏 | 控件栏」两栏：源是本面板的头等输入，
+    两栏会把标签右对齐顶到分割线上，左边空出半行、字段只剩一半宽度。单独关掉
+    split，标签贴着左边，字段一路撑到右边那三个按钮。
+    """
     row = layout.row(align=True)
+    row.use_property_split = False
     row.prop(settings, "source")
     if source is not None and source.type == strands.CURVE:
         row.operator(
@@ -101,14 +108,23 @@ class GENI_PT_main(bpy.types.Panel):
         layout.use_property_decorate = False
 
         head = layout.row(align=True)
+        # 这一行全是按钮、没有「标签 | 控件」可言：不关掉 split 的话，``prop`` 的
+        # ``toggle`` 会被排成「左标签栏 + 右按钮」，按钮左边白白空出一段。
+        head.use_property_split = False
         head.scale_y = 1.4
-        head.operator(
+        # 宽度按比例切：主操作「生成」拿六成，剩下四成给「实时」与删除。
+        # 右栏必须再开一个 ``row``：直接把两个控件丢给 split，两个会被对半分宽，
+        # 只带图标的「删除」也摊到 50 px（图标按钮本该是 33 px 的固有宽度）。
+        # 放进 row 里就回到正常规则 —— 带文字的「实时」可撑开，图标按钮只占自身宽度。
+        split = head.split(factor=0.62, align=True)
+        split.operator(
             GENI_OT_generate.bl_idname,
             text="生成" if obj is None else "更新",
             icon="PLAY",
         )
-        head.prop(settings, "live", text="实时", toggle=True)
-        head.operator(GENI_OT_delete.bl_idname, text="", icon="TRASH")
+        right = split.row(align=True)
+        right.prop(settings, "live", text="实时", toggle=True)
+        right.operator(GENI_OT_delete.bl_idname, text="", icon="TRASH")
 
         _source(layout, settings, source)
         if source is None:
